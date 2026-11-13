@@ -11,6 +11,18 @@ function resolveWorkspacesDir(raw) {
   return path.resolve(process.cwd(), val);
 }
 
+function mapLegacyMode(mode, kind) {
+  const m = (mode || '').toLowerCase();
+  if (kind === 'backend') {
+    if (m === 'cli') return 'claude-cli';
+    if (m === 'api') return 'anthropic';
+    return m || 'claude-cli';
+  }
+  if (m === 'cli') return 'gemini-cli';
+  if (m === 'api') return 'gemini';
+  return m || 'agy';
+}
+
 /**
  * Parse a .env file into process.env without overriding existing variables.
  * @param {string} envPath
@@ -35,17 +47,29 @@ export function loadEnvFile(envPath = path.resolve(process.cwd(), '.env')) {
 }
 
 /**
- * Return normalized runtime configuration.
+ * Return normalized runtime configuration supporting all AI providers & models.
  */
 export function loadConfig() {
   loadEnvFile();
   return {
-    claudeMode: (process.env.CLAUDE_MODE || 'cli').toLowerCase(),
+    backendProvider: (
+      process.env.BACKEND_PROVIDER || mapLegacyMode(process.env.CLAUDE_MODE || 'cli', 'backend')
+    ).toLowerCase(),
+    backendModel: process.env.BACKEND_MODEL || process.env.CLAUDE_MODEL || 'claude-opus-5-5',
+    frontendProvider: (
+      process.env.FRONTEND_PROVIDER || mapLegacyMode(process.env.GEMINI_MODE || 'agy', 'frontend')
+    ).toLowerCase(),
+    frontendModel: process.env.FRONTEND_MODEL || process.env.GEMINI_MODEL || 'gemini-4-hydrogen',
+
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
-    claudeModel: process.env.CLAUDE_MODEL || 'claude-opus-5-5',
-    geminiMode: (process.env.GEMINI_MODE || 'agy').toLowerCase(),
     geminiApiKey: process.env.GEMINI_API_KEY || '',
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-4-hydrogen',
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
+    ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434/v1',
+    customBaseUrl: process.env.CUSTOM_BASE_URL || '',
+    customApiKey: process.env.CUSTOM_API_KEY || '',
+
     telegramToken: process.env.TELEGRAM_BOT_TOKEN || '',
     telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
     workspacesDir: resolveWorkspacesDir(process.env.WORKSPACES_DIR),

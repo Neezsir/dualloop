@@ -241,7 +241,7 @@ async function startDaemon() {
             '/questions — ตอบคำถามที่ข้ามไว้',
             '/status — สถานะโปรเจกต์ + PM2',
             '/logs <slug> — ดู log ล่าสุด',
-            '/model <claude|gemini> <model-id> — สลับโมเดลชั่วคราว',
+            '/model <backend|frontend> [provider] <model-id> — สลับโมเดล/ค่ายชั่วคราว',
             '/rollback <slug> — ย้อน Checkpoint'
           ].join('\n')
         );
@@ -249,16 +249,22 @@ async function startDaemon() {
       }
 
       if (text.startsWith('/model ')) {
-        const [, provider, modelId] = text.trim().split(/\s+/);
-        if (provider === 'claude' && modelId) {
-          config.claudeModel = modelId;
-          return notify(`Claude model -> ${modelId} (${config.claudeMode})`);
+        const [, roleArg, a, b] = text.trim().split(/\s+/);
+        const isBackend = roleArg === 'backend' || roleArg === 'claude';
+        const isFrontend = roleArg === 'frontend' || roleArg === 'gemini';
+        if ((isBackend || isFrontend) && a) {
+          const provider = b ? a.toLowerCase() : null;
+          const modelId = b || a;
+          if (isBackend) {
+            if (provider) config.backendProvider = provider;
+            config.backendModel = modelId;
+            return notify(`Backend -> ${config.backendProvider} / ${config.backendModel}`);
+          }
+          if (provider) config.frontendProvider = provider;
+          config.frontendModel = modelId;
+          return notify(`Frontend -> ${config.frontendProvider} / ${config.frontendModel}`);
         }
-        if (provider === 'gemini' && modelId) {
-          config.geminiModel = modelId;
-          return notify(`Gemini model -> ${modelId} (${config.geminiMode})`);
-        }
-        return notify('ใช้: /model <claude|gemini> <model-id>');
+        return notify('ใช้: /model <backend|frontend> [provider] <model-id>');
       }
 
       if (text.startsWith('/status')) {

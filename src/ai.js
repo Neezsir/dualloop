@@ -49,7 +49,7 @@ function runCli(bin, args, promptText) {
   return res.stdout;
 }
 
-async function callClaudeApi(prompt, system, config) {
+async function callAnthropic(prompt, system, model, config) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -58,36 +58,19 @@ async function callClaudeApi(prompt, system, config) {
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: config.claudeModel,
+      model,
       max_tokens: 8192,
       system,
       messages: [{ role: 'user', content: prompt }]
     })
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(`Claude API ${res.status}: ${JSON.stringify(data)}`);
+  if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${JSON.stringify(data)}`);
   return data.content?.map((b) => b.text || '').join('\n') || '';
 }
 
-async function callClaude(prompt, system, config) {
-  const fullPrompt = `${system}\n\n${prompt}`;
-  if (config.claudeMode === 'cli') {
-    try {
-      const args = ['-p', '--output-format', 'text'];
-      if (config.claudeModel) args.push('--model', config.claudeModel);
-      return runCli('claude', args, fullPrompt);
-    } catch (err) {
-      if (!config.autoFallback || !config.anthropicApiKey) throw err;
-    }
-  }
-  if (!config.anthropicApiKey) {
-    throw new Error('Missing ANTHROPIC_API_KEY in .env (or login via `claude`)');
-  }
-  return callClaudeApi(prompt, system, config);
-}
-
-async function callGeminiApi(prompt, system, config) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`;
+async function callGeminiApi(prompt, system, model, config) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -102,32 +85,109 @@ async function callGeminiApi(prompt, system, config) {
   return data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
 }
 
-async function callGemini(prompt, system, config) {
-  const fullPrompt = `${system}\n\n${prompt}`;
-  const candidates = config.autoFallback ? [config.geminiMode, 'agy', 'cli', 'api'] : [config.geminiMode];
-  const order = candidates.filter((v, i, a) => v && a.indexOf(v) === i);
-  let lastErr;
+async function callOpenAICompat({ baseUrl, apiKey, model, prompt, system }) {
+  const headers = { 'content-type': 'application/json' };
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
-  for (const mode of order) {
+  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt }
+      ]
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`OpenAI-compat API ${res.status}: ${JSON.stringify(data)}`);
+  return data.choices?.[0]?.message?.content || '';
+}
+
+const PROVIDERS = {
+  'claude-cli': {
+    ready: () => true,
+    run: (prompt, system, model) =>
+      runCli('claude', model ? ['-p', '--output-format', 'text', '--model', model] : ['-p', '--output-format', 'text'], `${system}\n\n${prompt}`)
+  },
+  anthropic: {
+    ready: (c) => Boolean(c.anthropicApiKey),
+    run: callAnthropic
+  },
+  agy: {
+    ready: () => true,
+    run: (prompt, system, model) =>
+      runCli('agy', model ? ['--model', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`)
+  },
+  'gemini-cli': {
+    ready: () => true,
+    run: (prompt, system, model) =>
+      runCli('gemini', model ? ['-m', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`)
+  },
+  gemini: {
+    ready: (c) => Boolean(c.geminiApiKey),
+    run: callGeminiApi
+  },
+  'codex-cli': {
+    ready: () => true,
+    run: (prompt, system, model) =>
+      runCli('codex', model ? ['exec', '-m', model, '-'] : ['exec', '-'], `${system}\n\n${prompt}`)
+  },
+  openai: {
+    ready: (c) => Boolean(c.openaiApiKey),
+    run: (prompt, system, model, c) =>
+      callOpenAICompat({ baseUrl: c.openaiBaseUrl, apiKey: c.openaiApiKey, model, prompt, system })
+  },
+  openrouter: {
+    ready: (c) => Boolean(c.openrouterApiKey),
+    run: (prompt, system, model, c) =>
+      callOpenAICompat({ baseUrl: 'https://openrouter.ai/api/v1', apiKey: c.openrouterApiKey, model, prompt, system })
+  },
+  ollama: {
+    ready: (c) => Boolean(c.ollamaBaseUrl),
+    run: (prompt, system, model, c) =>
+      callOpenAICompat({ baseUrl: c.ollamaBaseUrl, apiKey: 'ollama', model, prompt, system })
+  },
+  custom: {
+    ready: (c) => Boolean(c.customBaseUrl),
+    run: (prompt, system, model, c) =>
+      callOpenAICompat({ baseUrl: c.customBaseUrl, apiKey: c.customApiKey, model, prompt, system })
+  }
+};
+
+/**
+ * Dispatch prompt to any configured AI provider with optional auto-fallback.
+ */
+async function callRole(role, prompt, system, config) {
+  const isFrontend = role === 'frontend' || role === 'gemini';
+  const primary = isFrontend ? config.frontendProvider : config.backendProvider;
+  const model = isFrontend ? config.frontendModel : config.backendModel;
+
+  const fallbackOrder = isFrontend
+    ? [primary, 'agy', 'gemini-cli', 'gemini', 'openrouter', 'openai', 'custom']
+    : [primary, 'claude-cli', 'anthropic', 'codex-cli', 'openrouter', 'openai', 'custom'];
+
+  const order = (config.autoFallback ? fallbackOrder : [primary]).filter(
+    (v, i, a) => v && PROVIDERS[v] && a.indexOf(v) === i
+  );
+
+  let lastErr;
+  for (const name of order) {
+    const provider = PROVIDERS[name];
+    if (!provider.ready(config)) {
+      if (name === primary) {
+        lastErr = new Error(`Provider "${name}" missing required API key or URL in .env`);
+      }
+      continue;
+    }
     try {
-      if (mode === 'agy') {
-        const args = ['-p', 'Follow the prompt from stdin.'];
-        if (config.geminiModel) args.unshift('--model', config.geminiModel);
-        return runCli('agy', args, fullPrompt);
-      }
-      if (mode === 'cli') {
-        const args = ['-p', 'Follow the prompt from stdin.'];
-        if (config.geminiModel) args.unshift('-m', config.geminiModel);
-        return runCli('gemini', args, fullPrompt);
-      }
-      if (mode === 'api' && config.geminiApiKey) {
-        return await callGeminiApi(prompt, system, config);
-      }
+      return await provider.run(prompt, system, model, config);
     } catch (err) {
       lastErr = err;
     }
   }
-  throw lastErr || new Error('No Gemini provider succeeded (install agy/gemini CLI or set GEMINI_API_KEY)');
+  throw lastErr || new Error(`No provider available for ${role}`);
 }
 
 /**
@@ -164,24 +224,24 @@ Form B (ready to build):
     "pm2Entry": "server.js",
     "testCommand": "node test.js",
     "tasks": [
-      { "id": "db-backend", "role": "claude", "title": "Build DB, backend API & tests", "detail": "..." },
-      { "id": "frontend-ui", "role": "gemini", "title": "Build HTML/CSS/JS frontend matching API_CONTRACT.json", "detail": "..." }
+      { "id": "db-backend", "role": "backend", "title": "Build DB, backend API & tests", "detail": "..." },
+      { "id": "frontend-ui", "role": "frontend", "title": "Build HTML/CSS/JS frontend matching API_CONTRACT.json", "detail": "..." }
     ]
   }
 }`;
 
-  const raw = await callClaude(prompt, system, config);
+  const raw = await callRole('backend', prompt, system, config);
   return extractJson(raw);
 }
 
 /**
- * Execute a build or bug-fix task using Claude (Backend/DB/Process/Test) or Gemini (Frontend).
+ * Execute a build or bug-fix task using configured Backend or Frontend AI provider.
  */
 export async function executeTask({ task, state, context, errorLog, config }) {
-  const isFrontend = task.role === 'gemini';
+  const isFrontend = task.role === 'frontend' || task.role === 'gemini';
   const roleDesc = isFrontend
-    ? 'You are the Frontend Engineer (Gemini). Build clean, responsive HTML/CSS/JS UI strictly matching API_CONTRACT.json and served by the backend or static dir.'
-    : 'You are the Backend/DB/Process/Test Engineer (Claude). Build Node.js/Python backend, DB setup, process entrypoint listening on process.env.PORT, and an automated smoke/API test script.';
+    ? 'You are the Frontend Engineer. Build clean, responsive HTML/CSS/JS UI strictly matching API_CONTRACT.json and served by the backend or static dir.'
+    : 'You are the Backend/DB/Process/Test Engineer. Build Node.js/Python backend, DB setup, process entrypoint listening on process.env.PORT, and an automated smoke/API test script.';
 
   const system = `${ponytailDirective(config.ponytailLevel)}
 ${roleDesc}
@@ -210,9 +270,6 @@ Return JSON ONLY:
   }
 }`;
 
-  const raw = isFrontend
-    ? await callGemini(prompt, system, config)
-    : await callClaude(prompt, system, config);
-
+  const raw = await callRole(isFrontend ? 'frontend' : 'backend', prompt, system, config);
   return extractJson(raw);
 }

@@ -112,6 +112,32 @@ async function askCliChoice(question, options, allowMultiple = false) {
   });
 }
 
+const PROVIDER_MODELS = {
+  'claude-cli': ['claude-opus-5-5', 'claude-sonnet-4-20250514'],
+  anthropic: ['claude-opus-5-5', 'claude-sonnet-4-20250514'],
+  agy: ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-3.8-flash'],
+  'gemini-cli': ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-3.8-flash'],
+  gemini: ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-3.8-flash'],
+  'codex-cli': ['gpt-5-codex', 'o3'],
+  openai: ['gpt-5', 'o3', 'gpt-4o'],
+  openrouter: ['anthropic/claude-opus-5-5', 'google/gemini-4-hydrogen', 'deepseek/deepseek-r1'],
+  ollama: ['qwen2.5-coder:14b', 'llama3.3', 'deepseek-r1'],
+  custom: ['deepseek-chat', 'grok-3']
+};
+
+const PROVIDER_OPTIONS = [
+  'claude-cli (Claude Team/Pro - ไม่เสียค่า API)',
+  'agy (Google AI Ultra - ไม่เสียค่า API)',
+  'gemini-cli (Gemini CLI)',
+  'codex-cli (OpenAI Codex CLI)',
+  'anthropic (Anthropic API Key)',
+  'gemini (Google AI Studio API Key)',
+  'openai (OpenAI API Key)',
+  'openrouter (OpenRouter - ใช้ได้ทุกค่ายใน 1 คีย์)',
+  'ollama (Local ฟรี ออฟไลน์)',
+  'custom (OpenAI-Compatible URL: DeepSeek/Groq/vLLM)'
+];
+
 async function pickModel(label, choices) {
   const picked = await askCliChoice(label, [...choices, 'กำหนดเอง (Custom)'], false);
   if (!picked.startsWith('กำหนดเอง')) return picked;
@@ -137,28 +163,20 @@ async function runInit(onlySkill = false) {
     if (configToo !== 'Yes') return;
   }
 
-  const claudeModePick = await askCliChoice(
-    '2) เลือกโหมด Claude (Backend/DB/Test):',
-    ['cli (Claude Team/Pro - ไม่เสียค่า API)', 'api (ใช้ ANTHROPIC_API_KEY)'],
-    false
+  const bePick = await askCliChoice('2) เลือก AI ฝั่ง Backend / DB / Test:', PROVIDER_OPTIONS, false);
+  const backendProvider = bePick.split(' ')[0];
+  const backendModel = await pickModel(
+    `3) เลือกรุ่น Backend (${backendProvider}):`,
+    PROVIDER_MODELS[backendProvider] || ['custom']
   );
-  const claudeMode = claudeModePick.startsWith('api') ? 'api' : 'cli';
-  const claudeModel = await pickModel('3) เลือกรุ่น Claude:', [
-    'claude-opus-5-5',
-    'claude-sonnet-4-20250514'
-  ]);
 
-  const geminiModePick = await askCliChoice(
-    '4) เลือกโหมด Gemini (Frontend):',
-    ['agy (Google AI Ultra - ไม่เสียค่า API)', 'cli (gemini CLI)', 'api (Google AI Studio)'],
-    false
+  const feDefaults = [PROVIDER_OPTIONS[1], ...PROVIDER_OPTIONS.filter((_, i) => i !== 1)];
+  const fePick = await askCliChoice('4) เลือก AI ฝั่ง Frontend UI:', feDefaults, false);
+  const frontendProvider = fePick.split(' ')[0];
+  const frontendModel = await pickModel(
+    `5) เลือกรุ่น Frontend (${frontendProvider}):`,
+    PROVIDER_MODELS[frontendProvider] || ['custom']
   );
-  const geminiMode = geminiModePick.split(' ')[0];
-  const geminiModel = await pickModel('5) เลือกรุ่น Gemini:', [
-    'gemini-4-hydrogen',
-    'gemini-4-argon',
-    'gemini-3.8-flash'
-  ]);
 
   const fallbackPick = await askCliChoice(
     '6) โหมดสลับ AI อัตโนมัติ (Auto-Fallback) เมื่อตัวหลักติด/หมดโควตา:',
@@ -167,25 +185,34 @@ async function runInit(onlySkill = false) {
   );
   const autoFallback = fallbackPick.startsWith('เปิด');
 
-  const claudeKey =
-    claudeMode === 'api' || autoFallback
-      ? await askText('ANTHROPIC_API_KEY (เว้นว่างถ้าใช้เฉพาะ CLI): ')
-      : '';
-  const geminiKey =
-    geminiMode === 'api' || autoFallback
-      ? await askText('GEMINI_API_KEY (เว้นว่างถ้าใช้เฉพาะ agy/CLI): ')
-      : '';
+  const used = new Set([backendProvider, frontendProvider]);
+  const anthropicKey = used.has('anthropic') ? await askText('ANTHROPIC_API_KEY: ') : '';
+  const geminiKey = used.has('gemini') ? await askText('GEMINI_API_KEY: ') : '';
+  const openaiKey = used.has('openai') ? await askText('OPENAI_API_KEY: ') : '';
+  const openrouterKey = used.has('openrouter') ? await askText('OPENROUTER_API_KEY: ') : '';
+  const ollamaUrl = used.has('ollama')
+    ? (await askText('OLLAMA_BASE_URL (Enter = http://127.0.0.1:11434/v1): ')).trim() ||
+      'http://127.0.0.1:11434/v1'
+    : 'http://127.0.0.1:11434/v1';
+  const customUrl = used.has('custom') ? await askText('CUSTOM_BASE_URL (e.g. https://api.deepseek.com/v1): ') : '';
+  const customKey = used.has('custom') ? await askText('CUSTOM_API_KEY: ') : '';
 
   const tgToken = await askText('TELEGRAM_BOT_TOKEN (เว้นว่างถ้าไม่ใช้ Telegram): ');
   const tgChat = tgToken.trim() ? await askText('TELEGRAM_CHAT_ID (เว้นว่างแล้วทักบอทเพื่อเอาทีหลังได้): ') : '';
 
   const envContent = [
-    `CLAUDE_MODE=${claudeMode}`,
-    `ANTHROPIC_API_KEY=${claudeKey.trim()}`,
-    `CLAUDE_MODEL=${claudeModel}`,
-    `GEMINI_MODE=${geminiMode}`,
+    `BACKEND_PROVIDER=${backendProvider}`,
+    `BACKEND_MODEL=${backendModel}`,
+    `FRONTEND_PROVIDER=${frontendProvider}`,
+    `FRONTEND_MODEL=${frontendModel}`,
+    `ANTHROPIC_API_KEY=${anthropicKey.trim()}`,
     `GEMINI_API_KEY=${geminiKey.trim()}`,
-    `GEMINI_MODEL=${geminiModel}`,
+    `OPENAI_API_KEY=${openaiKey.trim()}`,
+    `OPENAI_BASE_URL=https://api.openai.com/v1`,
+    `OPENROUTER_API_KEY=${openrouterKey.trim()}`,
+    `OLLAMA_BASE_URL=${ollamaUrl}`,
+    `CUSTOM_BASE_URL=${customUrl.trim()}`,
+    `CUSTOM_API_KEY=${customKey.trim()}`,
     `TELEGRAM_BOT_TOKEN=${tgToken.trim()}`,
     `TELEGRAM_CHAT_ID=${tgChat.trim()}`,
     `WORKSPACES_DIR=~/Desktop`,
