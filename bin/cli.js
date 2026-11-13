@@ -198,8 +198,18 @@ async function runInit(onlySkill = false) {
   const customUrl = used.has('custom') ? await askText('CUSTOM_BASE_URL (e.g. https://api.deepseek.com/v1): ') : '';
   const customKey = used.has('custom') ? await askText('CUSTOM_API_KEY: ') : '';
 
-  const tgToken = await askText('TELEGRAM_BOT_TOKEN (เว้นว่างถ้าไม่ใช้ Telegram): ');
-  const tgChat = tgToken.trim() ? await askText('TELEGRAM_CHAT_ID (เว้นว่างแล้วทักบอทเพื่อเอาทีหลังได้): ') : '';
+  const useTelegram = await askCliChoice(
+    '7) ต้องการเปิดใช้บอทสั่งงานผ่าน Telegram ด้วยไหม?',
+    ['No (ใช้เฉพาะ IDE / Terminal)', 'Yes (ตั้งค่า Telegram Bot + PM2)'],
+    false
+  );
+
+  let tgToken = '';
+  let tgChat = '';
+  if (useTelegram.startsWith('Yes')) {
+    tgToken = await askText('TELEGRAM_BOT_TOKEN: ');
+    tgChat = tgToken.trim() ? await askText('TELEGRAM_CHAT_ID (เว้นว่างแล้วทักบอทเพื่อเอาทีหลังได้): ') : '';
+  }
 
   const envContent = [
     `BACKEND_PROVIDER=${backendProvider}`,
@@ -226,10 +236,12 @@ async function runInit(onlySkill = false) {
   fs.writeFileSync(path.resolve(process.cwd(), '.env'), envContent + '\n', 'utf8');
   console.log('\x1b[32m✓\x1b[0m Created .env');
 
-  const startPm2 = await askCliChoice('7) เริ่มรัน Daemon ด้วย PM2 เลยไหม?', ['Yes', 'No'], false);
-  if (startPm2 === 'Yes') {
-    const res = runCmd(`pm2 start "${path.join(PKG_ROOT, 'ecosystem.config.cjs')}"`, process.cwd());
-    console.log(res.output);
+  if (useTelegram.startsWith('Yes') && tgToken.trim()) {
+    const startPm2 = await askCliChoice('8) เริ่มรัน Telegram Daemon ด้วย PM2 เลยไหม?', ['Yes', 'No'], false);
+    if (startPm2 === 'Yes') {
+      const res = runCmd(`pm2 start "${path.join(PKG_ROOT, 'ecosystem.config.cjs')}"`, process.cwd());
+      console.log(res.output);
+    }
   }
 }
 
