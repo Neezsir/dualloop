@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { emitKeypressEvents } from 'node:readline';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.js';
@@ -64,7 +65,7 @@ async function askCliChoice(question, options, allowMultiple = false) {
     });
   };
 
-  readline.emitKeypressEvents(process.stdin);
+  emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdout.write('\x1b[?25l');
