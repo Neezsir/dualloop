@@ -1,0 +1,28 @@
+{
+  "name": "dualloop",
+  "version": "0.1.0",
+  "description": "Autonomous Dual-AI (Claude Backend + Gemini Frontend) full-loop builder with PM2, Telegram 2-way choice UI, and Agent Skill.",
+  "type": "module",
+  "bin": {
+    "dualloop": "./bin/cli.js"
+  },
+  "scripts": {
+    "start": "node src/orchestrator.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop dualloop",
+    "pm2:logs": "pm2 logs dualloop"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "gemini",
+    "pm2",
+    "telegram",
+    "agent-skill",
+    "orchestrator"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

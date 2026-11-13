@@ -1,0 +1,9 @@
+node_modules/
+.env
+workspaces/
+.agents/
+.claude/
+.gemini/
+logs/
+*.log
+.DS_Store
