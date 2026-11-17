@@ -305,7 +305,7 @@ async function main() {
   if (cmd === 'run') {
     const name = args[0] || (await askText('ชื่อโปรแกรม: '));
     const concept = args.slice(1).join(' ') || (await askText('อธิบาย Concept: '));
-    const port = allocatePort(config.workspacesDir, config.basePort);
+    const port = await allocatePort(config.workspacesDir, config.basePort);
     const { dir, state } = createProjectState(config.workspacesDir, name, concept, port);
     await runProjectLoop({ dir, state, config, notify, askChoice });
     return;

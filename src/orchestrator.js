@@ -30,17 +30,31 @@ function previewUrls(port, config) {
   return `${local}\n🌐 Public: ${pub}`;
 }
 
+function checkAbort(shouldCancel) {
+  if (shouldCancel()) throw new Error('Cancelled by user');
+}
+
 /**
  * Run one complete clarify -> build (skip-on-block) -> verify/fix loop for a project.
  */
-export async function runProjectLoop({ dir, state, config, notify, askChoice }) {
+export async function runProjectLoop({
+  dir,
+  state,
+  config,
+  notify,
+  askChoice,
+  sendPhoto = async () => {},
+  shouldCancel = () => false
+}) {
   try {
     // Phase 1: Clarify (grill-me + ponytail choice-only)
     if (state.phase === 'clarify') {
       await notify(`🔎 [Phase 1/4: Clarify] ${state.name}\nกำลังวิเคราะห์ Concept และวางคำถามสเปก...`);
     }
     while (state.phase === 'clarify') {
+      checkAbort(shouldCancel);
       const res = await clarifyStep(state, config);
+      checkAbort(shouldCancel);
 
       if (!res.done) {
         const answer = await askChoice(
@@ -78,6 +92,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 
     // Phase 2 & 3: Checkpoint + Build (Dual-AI + Skip-on-Block)
     if (state.phase === 'build') {
+      checkAbort(shouldCancel);
       const dbCount = snapshotDbs(dir);
       const cp = gitCheckpoint(dir, `checkpoint-${Date.now()}`);
       if (cp.hash) state.lastCheckpoint = cp.hash;
@@ -90,6 +105,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
       let guardSynced = false;
       const totalTasks = state.tasks.length;
       while (true) {
+        checkAbort(shouldCancel);
         const idx = state.tasks.findIndex((t) => t.status === 'pending');
         if (idx === -1) break;
         const task = state.tasks[idx];
@@ -105,6 +121,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 
         const context = buildCompressedContext(dir, state);
         const res = await executeTask({ task, state, context, config });
+        checkAbort(shouldCancel);
 
         if (res.status === 'blocked') {
           task.status = 'blocked';
@@ -162,6 +179,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 
     // Phase 4: Verify 4-Layer & Fix Loop (PM2 + Security + DB/API + Browser E2E)
     while (state.phase === 'verify') {
+      checkAbort(shouldCancel);
       await notify(`🧪 [Phase 4/4: Verify] ${state.name} เริ่มตรวจ 4 ชั้น (Port ${state.port})...`);
       const check = await verifyProject(dir, state, async (stepMsg) => {
         await notify(`🧪 [Phase 4/4] ${stepMsg}`);
@@ -171,16 +189,23 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
         state.phase = state.blockedQuestions.length ? 'waiting_decisions' : 'done';
         appendHistory(state, 'Verified & online via PM2');
         saveState(dir, state);
-        await notify(
+        const doneMsg =
           `🎉 [เสร็จสมบูรณ์ 4/4] ${state.name}\n` +
-            `PM2: ${state.pm2Name} (online)\n` +
-            `🔗 URL: ${previewUrls(state.port, config)}\n` +
-            `📂 Path: ${dir}` +
-            (state.blockedQuestions.length
-              ? `\n\n⚠️ มี ${state.blockedQuestions.length} คำถามที่ข้ามไว้ (พิมพ์ /questions เพื่อตอบ)`
-              : '')
-        );
+          `PM2: ${state.pm2Name} (online)\n` +
+          `🔗 URL: ${previewUrls(state.port, config)}\n` +
+          `📂 Path: ${dir}` +
+          (state.blockedQuestions.length
+            ? `\n\n⚠️ มี ${state.blockedQuestions.length} คำถามที่ข้ามไว้ (พิมพ์ /questions เพื่อตอบ)`
+            : '');
+        await notify(doneMsg);
+        if (check.screenshotPath) {
+          await sendPhoto(check.screenshotPath, `📸 ตัวอย่างหน้าเว็บ: ${state.name}`).catch(() => {});
+        }
         return;
+      }
+
+      if (check.screenshotPath) {
+        await sendPhoto(check.screenshotPath, `📸 Screenshot ตอนตรวจไม่ผ่าน (${state.name})`).catch(() => {});
       }
 
       if (state.fixLoops >= config.maxFixLoops) {
@@ -229,6 +254,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
         errorLog: check.error,
         config
       });
+      checkAbort(shouldCancel);
 
       if (fixRes.status === 'ok') {
         applyFileChanges(dir, fixRes.files, fixRes.deleteFiles);
@@ -238,6 +264,13 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
       }
     }
   } catch (err) {
+    if (err.message === 'Cancelled by user') {
+      state.phase = 'paused';
+      appendHistory(state, 'Cancelled by user');
+      saveState(dir, state);
+      await notify(`🛑 [${state.name}] ยกเลิกงานแล้ว (พิมพ์ /resume ${state.slug} เพื่อทำต่อทีหลังได้)`);
+      return;
+    }
     state.phase = 'error';
     appendHistory(state, `Error: ${err.message}`);
     saveState(dir, state);
@@ -248,7 +281,8 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 /**
  * Append a new instruction to an existing project and re-enter build loop.
  */
-export async function continueProject({ dir, state, instruction, config, notify, askChoice }) {
+export async function continueProject(opts) {
+  const { dir, state, instruction } = opts;
   state.tasks.push(
     {
       id: `cont-be-${Date.now()}`,
@@ -269,7 +303,7 @@ export async function continueProject({ dir, state, instruction, config, notify,
   state.fixLoops = 0;
   appendHistory(state, `Continue: ${instruction}`);
   saveState(dir, state);
-  return runProjectLoop({ dir, state, config, notify, askChoice });
+  return runProjectLoop(opts);
 }
 
 async function startDaemon() {
@@ -283,6 +317,7 @@ async function startDaemon() {
   }
 
   let running = false;
+  let cancelFlag = false;
   const jobQueue = [];
   let bot;
 
@@ -291,25 +326,39 @@ async function startDaemon() {
     running = true;
     try {
       while (jobQueue.length) {
+        cancelFlag = false;
         const job = jobQueue.shift();
         await job();
       }
     } finally {
       running = false;
+      cancelFlag = false;
     }
   };
 
+  const notify = (m) => bot.send(m);
+  const sendPhoto = (p, c) => bot.sendPhoto(p, c);
+  const askChoice = (q, opts, multi, extra) => bot.askChoice(q, opts, multi, extra);
+  const loopCtx = (dir, state) => ({
+    dir,
+    state,
+    config,
+    notify,
+    askChoice,
+    sendPhoto,
+    shouldCancel: () => cancelFlag
+  });
+
   bot = new TelegramController(config, {
     onCommand: async (text) => {
-      const notify = (m) => bot.send(m);
-      const askChoice = (q, opts, multi) => bot.askChoice(q, opts, multi);
-
       if (text.startsWith('/start') || text.startsWith('/help')) {
         await notify(
           [
             'DualLoop Commands:',
             '/new <ชื่อ> | <คอนเซ็ปต์> — สร้างโปรแกรมใหม่ (ต่อคิวได้)',
             '/continue <slug> | <คำสั่งเพิ่มเติม> — ทำต่อจากโปรเจกต์เดิม',
+            '/resume <slug> — ทำต่อจากงานที่ค้าง/ยกเลิกไว้',
+            '/cancel — ยกเลิกงานที่กำลังทำและล้างคิว',
             '/questions — ตอบคำถามที่ข้ามไว้',
             '/status — สถานะโปรเจกต์ + คิว + PM2',
             '/logs <slug> — ดู log ล่าสุด',
@@ -318,6 +367,14 @@ async function startDaemon() {
             '/delete <slug> — หยุด PM2 และลบโปรเจกต์'
           ].join('\n')
         );
+        return;
+      }
+
+      if (text.startsWith('/cancel')) {
+        cancelFlag = true;
+        jobQueue.length = 0;
+        bot.cancelPending('Cancelled by user');
+        await notify('🛑 สั่งยกเลิกงานปัจจุบันและล้างคิวแล้ว');
         return;
       }
 
@@ -377,11 +434,29 @@ async function startDaemon() {
         const confirm = await askChoice(
           `⚠️ ยืนยันลบโปรเจกต์ "${state.name}" (${dir}) และหยุด PM2?`,
           ['ยืนยันลบ (Delete)', 'ยกเลิก (Cancel)'],
-          false
+          false,
+          { allowCustom: false, allowCancel: false }
         );
         if (!confirm.includes('Delete')) return notify('ยกเลิกการลบแล้ว');
         deleteProject(dir, state);
         await notify(`🗑️ ลบโปรเจกต์ ${slug} และหยุด PM2 แล้ว`);
+        return;
+      }
+
+      if (text.startsWith('/resume')) {
+        const slug = text.replace('/resume', '').trim();
+        const dir = path.join(config.workspacesDir, slug);
+        const state = loadState(dir);
+        if (!state) return notify(`Not found: ${slug}`);
+        if (state.phase === 'paused' || state.phase === 'error') {
+          const hasPending = state.tasks.some((t) => t.status === 'pending');
+          state.phase = !state.tasks.length ? 'clarify' : hasPending ? 'build' : 'verify';
+          state.fixLoops = 0;
+          saveState(dir, state);
+        }
+        jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+        await notify(`▶️ รับงานทำต่อ: ${state.name} (phase: ${state.phase})`);
+        processQueue();
         return;
       }
 
@@ -402,7 +477,7 @@ async function startDaemon() {
           }
           p.state.phase = 'build';
           saveState(p.dir, p.state);
-          jobQueue.push(() => runProjectLoop({ dir: p.dir, state: p.state, config, notify, askChoice }));
+          jobQueue.push(() => runProjectLoop(loopCtx(p.dir, p.state)));
         }
         processQueue();
         return;
@@ -412,9 +487,9 @@ async function startDaemon() {
         const raw = text.slice(5).trim();
         const [name, ...rest] = raw.split('|');
         const concept = rest.join('|').trim() || name.trim();
-        const port = allocatePort(config.workspacesDir, config.basePort);
+        const port = await allocatePort(config.workspacesDir, config.basePort);
         const { dir, state } = createProjectState(config.workspacesDir, name.trim(), concept, port);
-        jobQueue.push(() => runProjectLoop({ dir, state, config, notify, askChoice }));
+        jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
         if (running || jobQueue.length > 1) {
           await notify(`📥 รับงานเข้าคิว (#${jobQueue.length}): ${state.name}`);
         }
@@ -432,7 +507,7 @@ async function startDaemon() {
           await notify('รูปแบบ: /continue <slug> | <คำสั่งเพิ่มเติม>');
           return;
         }
-        jobQueue.push(() => continueProject({ dir, state, instruction, config, notify, askChoice }));
+        jobQueue.push(() => continueProject({ ...loopCtx(dir, state), instruction }));
         if (running || jobQueue.length > 1) {
           await notify(`📥 รับคำสั่งต่อยอดเข้าคิว (#${jobQueue.length}): ${state.name}`);
         }
@@ -443,6 +518,17 @@ async function startDaemon() {
 
   console.log('DualLoop Telegram Bot polling started...');
   await bot.send('DualLoop Bot พร้อมทำงานแล้ว (/help)');
+
+  // Auto-resume interrupted builds/verifications after PM2 restart
+  const interrupted = listProjects(config.workspacesDir).filter(
+    (p) => p.state.phase === 'build' || p.state.phase === 'verify'
+  );
+  for (const p of interrupted) {
+    await notify(`🔄 พบงานค้างจากรอบก่อน (${p.state.slug}, phase: ${p.state.phase}) -> กำลังทำต่ออัตโนมัติ`);
+    jobQueue.push(() => runProjectLoop(loopCtx(p.dir, p.state)));
+  }
+  if (interrupted.length) processQueue();
+
   await bot.startPolling();
 }
 

@@ -1,5 +1,7 @@
+import fs from 'node:fs';
+
 /**
- * Minimal zero-dependency Telegram Bot client with inline choice keyboards.
+ * Minimal zero-dependency Telegram Bot client with inline keyboards, custom text input, cancel, and photo support.
  */
 export class TelegramController {
   constructor(config, handlers) {
@@ -8,6 +10,7 @@ export class TelegramController {
     this.handlers = handlers;
     this.offset = 0;
     this.pendingChoices = new Map();
+    this.awaitingTextQid = null;
     this.seq = 0;
     this.running = false;
   }
@@ -32,21 +35,41 @@ export class TelegramController {
     });
   }
 
+  async sendPhoto(filePath, caption = '') {
+    if (!this.token || !this.chatId || !filePath || !fs.existsSync(filePath)) return null;
+    const form = new FormData();
+    form.append('chat_id', this.chatId);
+    if (caption) form.append('caption', String(caption).slice(0, 1000));
+    form.append('photo', new Blob([fs.readFileSync(filePath)], { type: 'image/png' }), 'preview.png');
+
+    const res = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, {
+      method: 'POST',
+      body: form
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(`Telegram sendPhoto: ${data.description}`);
+    return data.result;
+  }
+
   /**
-   * Send a clickable choice prompt and await user's selection.
+   * Send a clickable choice prompt (with optional custom text & cancel buttons) and await user's answer.
    */
-  askChoice(question, options, allowMultiple = false) {
+  askChoice(question, options, allowMultiple = false, { allowCustom = true, allowCancel = true } = {}) {
     const qid = `q${++this.seq}`;
     const state = {
       question,
       options,
       allowMultiple,
+      allowCustom,
+      allowCancel,
       selected: new Set(),
-      resolve: null
+      resolve: null,
+      reject: null
     };
 
-    const promise = new Promise((resolve) => {
+    const promise = new Promise((resolve, reject) => {
       state.resolve = resolve;
+      state.reject = reject;
     });
 
     this.pendingChoices.set(qid, state);
@@ -56,14 +79,26 @@ export class TelegramController {
     return promise;
   }
 
+  cancelPending(reason = 'Cancelled by user') {
+    this.awaitingTextQid = null;
+    for (const [qid, pending] of this.pendingChoices.entries()) {
+      this.pendingChoices.delete(qid);
+      pending.reject(new Error(reason));
+    }
+  }
+
   buildKeyboard(qid, state) {
     const rows = state.options.map((opt, idx) => {
       const prefix = state.allowMultiple ? (state.selected.has(idx) ? '[✓] ' : '[ ] ') : '';
       return [{ text: `${prefix}${opt}`, callback_data: `sel:${qid}:${idx}` }];
     });
     if (state.allowMultiple) {
-      rows.push([{ text: 'ยืนยันคำตอบ (Submit)', callback_data: `sub:${qid}` }]);
+      rows.push([{ text: '✅ ยืนยันคำตอบ (Submit)', callback_data: `sub:${qid}` }]);
     }
+    const actions = [];
+    if (state.allowCustom) actions.push({ text: '✏️ พิมพ์ตอบเอง', callback_data: `cus:${qid}` });
+    if (state.allowCancel) actions.push({ text: '❌ ยกเลิกงาน', callback_data: `can:${qid}` });
+    if (actions.length) rows.push(actions);
     return { inline_keyboard: rows };
   }
 
@@ -78,6 +113,30 @@ export class TelegramController {
     const pending = this.pendingChoices.get(qid);
     if (!pending) {
       await this.api('answerCallbackQuery', { callback_query_id: cb.id, text: 'Expired' });
+      return;
+    }
+
+    if (kind === 'can') {
+      this.pendingChoices.delete(qid);
+      if (this.awaitingTextQid === qid) this.awaitingTextQid = null;
+      await this.api('answerCallbackQuery', { callback_query_id: cb.id, text: 'Cancelled' });
+      await this.api('editMessageText', {
+        chat_id: chatId,
+        message_id: cb.message.message_id,
+        text: `${pending.question}\n-> ❌ ยกเลิกแล้ว`
+      });
+      pending.reject(new Error('Cancelled by user'));
+      return;
+    }
+
+    if (kind === 'cus') {
+      this.awaitingTextQid = qid;
+      await this.api('answerCallbackQuery', { callback_query_id: cb.id, text: 'พิมพ์คำตอบส่งมาในแชทได้เลย' });
+      await this.api('editMessageText', {
+        chat_id: chatId,
+        message_id: cb.message.message_id,
+        text: `${pending.question}\n\n✏️ กรุณาพิมพ์คำตอบของคุณส่งมาในแชทได้เลยครับ`
+      });
       return;
     }
 
@@ -134,6 +193,18 @@ export class TelegramController {
 
     const text = String(msg.text || '').trim();
     if (!text) return;
+
+    if (this.awaitingTextQid && !text.startsWith('/')) {
+      const qid = this.awaitingTextQid;
+      this.awaitingTextQid = null;
+      const pending = this.pendingChoices.get(qid);
+      if (pending) {
+        this.pendingChoices.delete(qid);
+        pending.resolve(text);
+        return;
+      }
+    }
+
     await this.handlers.onCommand(text);
   }
 

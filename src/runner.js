@@ -1,16 +1,28 @@
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawn } from 'node:child_process';
 import { listProjects } from './state.js';
 
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', () => resolve(false));
+    srv.listen(port, '0.0.0.0', () => {
+      srv.close(() => resolve(true));
+    });
+  });
+}
+
 /**
- * Allocate the next free port starting from basePort.
+ * Allocate the next free port unused in both STATE.json and the host OS.
  */
-export function allocatePort(workspacesDir, basePort) {
+export async function allocatePort(workspacesDir, basePort) {
   const used = new Set(listProjects(workspacesDir).map((p) => p.state.port));
   let port = basePort;
-  while (used.has(port)) port++;
+  while (used.has(port) || !(await isPortFree(port))) port++;
   return port;
 }
 
@@ -190,7 +202,7 @@ export function findBrowserBinary() {
 /**
  * Headless browser E2E smoke probe using Chrome DevTools Protocol & Node native WebSocket.
  */
-async function probeFrontendBrowser(url) {
+async function probeFrontendBrowser(url, screenshotPath) {
   const bin = findBrowserBinary();
   if (!bin || typeof WebSocket !== 'function') return { skipped: true, ok: true };
 
@@ -284,7 +296,20 @@ async function probeFrontendBrowser(url) {
       errors.push('Blank UI rendered (empty DOM)');
     }
 
-    return errors.length ? { ok: false, error: errors.slice(0, 6).join('\n') } : { ok: true };
+    let hasScreenshot = false;
+    if (screenshotPath) {
+      try {
+        const shot = await send('Page.captureScreenshot', { format: 'png' });
+        if (shot?.data) {
+          fs.writeFileSync(screenshotPath, Buffer.from(shot.data, 'base64'));
+          hasScreenshot = true;
+        }
+      } catch {}
+    }
+
+    return errors.length
+      ? { ok: false, error: errors.slice(0, 6).join('\n'), screenshotPath: hasScreenshot ? screenshotPath : null }
+      : { ok: true, screenshotPath: hasScreenshot ? screenshotPath : null };
   } catch {
     return { skipped: true, ok: true };
   } finally {
@@ -428,11 +453,17 @@ export async function verifyProject(dir, state, onStep = () => {}) {
     }
   }
 
-  const browserCheck = await probeFrontendBrowser(`${baseUrl}/`);
+  const previewPath = path.join(os.tmpdir(), `dualloop-preview-${state.slug}.png`);
+  const browserCheck = await probeFrontendBrowser(`${baseUrl}/`, previewPath);
   if (!browserCheck.ok) {
-    return { ok: false, layer: 'frontend', error: `Browser probe failed:\n${browserCheck.error}` };
+    return {
+      ok: false,
+      layer: 'frontend',
+      error: `Browser probe failed:\n${browserCheck.error}`,
+      screenshotPath: browserCheck.screenshotPath
+    };
   }
 
   runCmd('pm2 save', dir);
-  return { ok: true };
+  return { ok: true, screenshotPath: browserCheck.screenshotPath };
 }

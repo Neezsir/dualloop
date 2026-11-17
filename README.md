@@ -26,6 +26,8 @@ pm2 start ecosystem.config.cjs
 
 - `/new <name> | <concept>` — Start clarify -> build -> 4-layer verify loop (queue-safe)
 - `/continue <slug> | <instruction>` — Add features with DB migration guard
+- `/resume <slug>` — Resume paused/interrupted project
+- `/cancel` — Cancel active task and clear queue
 - `/questions` — Answer queued blocked decisions
 - `/status` — Show project states, job queue & PM2 status
 - `/logs <slug>` — Tail PM2 logs
