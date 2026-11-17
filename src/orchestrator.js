@@ -32,6 +32,7 @@ import {
   verifyProject
 } from './runner.js';
 import { startDashboard } from './dashboard.js';
+import { generateProjectDocs } from './docsgen.js';
 import { TelegramController } from './telegram.js';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -139,6 +140,7 @@ export async function runProjectLoop({
       state.phase = 'build';
       appendHistory(state, 'Spec & contracts locked');
       saveState(dir, state);
+      generateProjectDocs(dir, state);
       await notify(
         `✅ [Phase 1/4 เสร็จสิ้น] ${state.name}\n` +
           `ล็อก SPEC.md, DB_SCHEMA.sql, API_CONTRACT.json แล้ว (${state.tasks.length} tasks)\n` +
@@ -265,13 +267,15 @@ export async function runProjectLoop({
         state.phase = state.blockedQuestions.length ? 'waiting_decisions' : 'done';
         appendHistory(state, 'Verified & online via PM2');
         saveState(dir, state);
+        const docsOut = generateProjectDocs(dir, state);
         const pushed = config.autoPushOrigin ? autoPushGitOrigin(dir, `verified: ${state.slug}`) : { pushed: false };
         const dur = formatDuration(m.startedAt, m.finishedAt);
         const doneMsg =
           `🎉 [เสร็จสมบูรณ์ 4/4] ${state.name}\n` +
           `PM2: ${state.pm2Name} (online)\n` +
           `🔗 URL: ${previewUrls(state.port, config)}\n` +
-          `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}` +
+          `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}\n` +
+          `📐 Docs: docs/architecture.html · diagram.svg/png · FLOW_DIAGRAM.md · TECHSTACK.txt` +
           (pushed.pushed ? `\n🐙 Git: auto-pushed origin` : '') +
           `\n📂 Path: ${dir}` +
           (state.blockedQuestions.length
@@ -280,6 +284,9 @@ export async function runProjectLoop({
         await notify(doneMsg);
         if (check.screenshotPath) {
           await sendPhoto(check.screenshotPath, `📸 ตัวอย่างหน้าเว็บ: ${state.name}`).catch(() => {});
+        }
+        if (docsOut.pngPath) {
+          await sendPhoto(docsOut.pngPath, `🗺️ Architecture Diagram: ${state.name}`).catch(() => {});
         }
         return;
       }

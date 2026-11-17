@@ -88,6 +88,25 @@ export function startDashboard({ config, getQueueInfo, onNewProject, onResumePro
         });
       }
 
+      if (req.method === 'GET' && urlPath.startsWith('/api/project-docs/')) {
+        const parts = urlPath.slice('/api/project-docs/'.length).split('/');
+        const slug = decodeURIComponent(parts[0] || '').replace(/[^a-zA-Z0-9ก-๙_-]/g, '');
+        const fileRel = parts.slice(1).join('/') || 'architecture.html';
+        const docsRoot = path.join(config.workspacesDir, slug, 'docs');
+        const target = path.resolve(docsRoot, fileRel);
+        if (!target.startsWith(docsRoot + path.sep) || !fs.existsSync(target)) {
+          return json(res, 404, { error: 'Not found' });
+        }
+        const ext = path.extname(target).toLowerCase();
+        const mime =
+          ext === '.html' ? 'text/html; charset=utf-8'
+          : ext === '.svg' ? 'image/svg+xml'
+          : ext === '.png' ? 'image/png'
+          : 'text/plain; charset=utf-8';
+        res.writeHead(200, { 'content-type': mime });
+        return res.end(fs.readFileSync(target));
+      }
+
       if (req.method === 'GET' && urlPath.startsWith('/api/preview/')) {
         const slug = decodeURIComponent(urlPath.slice('/api/preview/'.length)).replace(/[^a-zA-Z0-9ก-๙_-]/g, '');
         const img = path.join(os.tmpdir(), `dualloop-preview-${slug}.png`);

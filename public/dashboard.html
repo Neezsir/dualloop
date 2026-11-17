@@ -92,6 +92,7 @@
               <button onclick="act('${p.slug}','restart')">Restart</button>
               <button onclick="act('${p.slug}','resume')">Resume</button>
               <button onclick="viewLogs('${p.slug}')">Logs</button>
+              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/architecture.html','_blank')">Flow/Docs</button>
               <button onclick="act('${p.slug}','rollback')">Rollback</button>
               <button class="danger" onclick="if(confirm('ลบ ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
             </div>
