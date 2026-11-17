@@ -62,11 +62,13 @@
       </div>
       <div class="row" style="border-top:1px solid var(--line);padding-top:10px;">
         <span class="meta">Backend:</span>
-        <select id="beProv"><option>claude-cli</option><option>anthropic</option><option>codex-cli</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
-        <input id="beModel" placeholder="Backend Model" style="max-width:190px;" />
+        <select id="beProv" onchange="syncModels('be')"><option>claude-cli</option><option>agy</option><option>gemini-cli</option><option>codex-cli</option><option>anthropic</option><option>gemini</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+        <select id="beModelSel" onchange="onModelPick('be')"></select>
+        <input id="beModelCustom" placeholder="Custom Model ID" style="display:none;max-width:170px;" />
         <span class="meta">Frontend:</span>
-        <select id="feProv"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
-        <input id="feModel" placeholder="Frontend Model" style="max-width:190px;" />
+        <select id="feProv" onchange="syncModels('fe')"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>codex-cli</option><option>anthropic</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+        <select id="feModelSel" onchange="onModelPick('fe')"></select>
+        <input id="feModelCustom" placeholder="Custom Model ID" style="display:none;max-width:170px;" />
         <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="autoFb" style="min-width:auto;flex:0;" /> Auto-Fallback</label>
         <button id="btnSaveAi" onclick="saveAiConfig()">บันทึก AI</button>
       </div>
@@ -160,14 +162,55 @@
     }
     applyTheme(localStorage.getItem('dualloop-theme') || 'light');
 
+    const MODEL_PRESETS = {
+      'claude-cli': ['claude-opus-5-5', 'claude-sonnet-4-20250514'],
+      anthropic: ['claude-opus-5-5', 'claude-sonnet-4-20250514'],
+      agy: ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-3.8-flash'],
+      'gemini-cli': ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-3.8-flash'],
+      gemini: ['gemini-4-hydrogen', 'gemini-4-argon', 'gemini-3.8-flash'],
+      'codex-cli': ['gpt-5-codex', 'o3'],
+      openai: ['gpt-5', 'o3', 'gpt-4o'],
+      openrouter: ['anthropic/claude-opus-5-5', 'google/gemini-4-hydrogen', 'deepseek/deepseek-r1'],
+      ollama: ['qwen2.5-coder:14b', 'llama3.3', 'deepseek-r1'],
+      custom: ['deepseek-chat', 'grok-3']
+    };
+
+    function syncModels(side, preferredVal) {
+      const prov = document.getElementById(side + 'Prov').value;
+      const sel = document.getElementById(side + 'ModelSel');
+      const customInp = document.getElementById(side + 'ModelCustom');
+      const list = MODEL_PRESETS[prov] || [];
+      sel.innerHTML = list.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('') +
+        '<option value="__custom__">Custom...</option>';
+      if (preferredVal && !list.includes(preferredVal)) {
+        sel.value = '__custom__';
+        customInp.style.display = 'inline-block';
+        customInp.value = preferredVal;
+      } else {
+        sel.value = preferredVal || list[0] || '__custom__';
+        customInp.style.display = sel.value === '__custom__' ? 'inline-block' : 'none';
+      }
+    }
+
+    function onModelPick(side) {
+      const sel = document.getElementById(side + 'ModelSel');
+      const customInp = document.getElementById(side + 'ModelCustom');
+      customInp.style.display = sel.value === '__custom__' ? 'inline-block' : 'none';
+    }
+
+    function getSelectedModel(side) {
+      const sel = document.getElementById(side + 'ModelSel').value;
+      return sel === '__custom__' ? document.getElementById(side + 'ModelCustom').value.trim() : sel;
+    }
+
     async function loadAiConfig() {
       const r = await fetch('/api/ai-config');
       if (!r.ok) return;
       const c = await r.json();
       document.getElementById('beProv').value = c.backendProvider;
-      document.getElementById('beModel').value = c.backendModel;
+      syncModels('be', c.backendModel);
       document.getElementById('feProv').value = c.frontendProvider;
-      document.getElementById('feModel').value = c.frontendModel;
+      syncModels('fe', c.frontendModel);
       document.getElementById('autoFb').checked = Boolean(c.autoFallback);
     }
 
@@ -177,9 +220,9 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           backendProvider: document.getElementById('beProv').value,
-          backendModel: document.getElementById('beModel').value.trim(),
+          backendModel: getSelectedModel('be'),
           frontendProvider: document.getElementById('feProv').value,
-          frontendModel: document.getElementById('feModel').value.trim(),
+          frontendModel: getSelectedModel('fe'),
           autoFallback: document.getElementById('autoFb').checked
         })
       });
