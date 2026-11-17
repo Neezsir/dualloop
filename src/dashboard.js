@@ -94,6 +94,10 @@ export function startDashboard({
         return serveSafeStatic(res, path.join(ROOT, 'docs'), urlPath.slice('/docs/'.length));
       }
 
+      if (req.method === 'GET' && urlPath.startsWith('/icons/')) {
+        return serveSafeStatic(res, path.join(ROOT, 'public', 'icons'), urlPath.slice('/icons/'.length));
+      }
+
       if (req.method === 'GET' && urlPath.startsWith('/api/project-docs/')) {
         const parts = urlPath.slice('/api/project-docs/'.length).split('/');
         const slug = decodeURIComponent(parts[0] || '').replace(/[^a-zA-Z0-9ก-๙_-]/g, '');

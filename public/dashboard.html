@@ -53,6 +53,8 @@
     .prov-opt:hover { background:var(--acc-soft); }
     .prov-opt.sel { background:var(--acc-soft); font-weight:700; color:var(--acc); }
     .prov-ico { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; flex-shrink:0; }
+    .prov-ico img { width:18px; height:18px; display:block; object-fit:contain; }
+    [data-theme="dark"] .prov-ico img.mono { filter:invert(1); }
     @media (max-width:560px) { .field-grid { grid-template-columns:1fr; } }
 
     input, select, textarea, button {
@@ -508,21 +510,21 @@
     function closeModal() { document.getElementById('modalBg').style.display = 'none'; }
 
     const PROVIDERS = ['claude-cli', 'agy', 'gemini-cli', 'codex-cli', 'anthropic', 'gemini', 'openai', 'openrouter', 'ollama', 'custom'];
-    function provLogoSvg(prov, uid) {
-      const g = `g-${uid}`;
-      const logos = {
-        'claude-cli': `<svg viewBox="0 0 24 24" width="18" height="18"><g stroke="#D97757" stroke-width="2.1" stroke-linecap="round"><line x1="12" y1="2.5" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="18.7" y2="18.7"/><line x1="18.7" y1="5.3" x2="5.3" y2="18.7"/><line x1="8.4" y1="3.2" x2="15.6" y2="20.8"/><line x1="20.8" y1="8.4" x2="3.2" y2="15.6"/></g><circle cx="12" cy="12" r="2.2" fill="#D97757"/></svg>`,
-        anthropic: `<svg viewBox="0 0 24 24" width="18" height="18" fill="#D97757"><path d="M14.2 4h-2.9l5.9 16h2.9L14.2 4zm-5.4 0L3 20h2.9l1.2-3.5h5.7l1.2 3.5h2.9L11.1 4H8.8zm-.7 10 1.8-5.3 1.8 5.3H8.1z"/></svg>`,
-        gemini: `<svg viewBox="0 0 24 24" width="18" height="18"><defs><linearGradient id="${g}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4285F4"/><stop offset="55%" stop-color="#9B72CB"/><stop offset="100%" stop-color="#D96570"/></linearGradient></defs><path fill="url(#${g})" d="M12 2c.6 5.2 4.8 9.4 10 10-5.2.6-9.4 4.8-10 10-.6-5.2-4.8-9.4-10-10 5.2-.6 9.4-4.8 10-10z"/></svg>`,
-        agy: `<svg viewBox="0 0 24 24" width="18" height="18"><defs><linearGradient id="${g}-a" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#2563EB"/><stop offset="50%" stop-color="#06B6D4"/><stop offset="100%" stop-color="#8B5CF6"/></linearGradient></defs><path fill="url(#${g}-a)" d="M12 2.5 3 20.5h4.3l1.9-4h5.6l1.9 4H21L12 2.5zm0 6.3 2 4.5h-4l2-4.5z"/><circle cx="19" cy="5.5" r="2" fill="#34A853"/></svg>`,
-        openai: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"><path d="M12 3.2a4.4 4.4 0 0 1 4.1 2.8 4.4 4.4 0 0 1 3.7 6 4.4 4.4 0 0 1-1.9 6.5 4.4 4.4 0 0 1-5.9 2.3 4.4 4.4 0 0 1-6.5-1.9 4.4 4.4 0 0 1-2.3-5.9 4.4 4.4 0 0 1 1.9-6.5A4.4 4.4 0 0 1 12 3.2z"/><polygon points="12,8.4 15.1,10.2 15.1,13.8 12,15.6 8.9,13.8 8.9,10.2"/><path d="M12 8.4V4.2M15.1 10.2l3.6-2.1M15.1 13.8l3.6 2.1M12 15.6v4.2M8.9 13.8l-3.6 2.1M8.9 10.2L5.3 8.1"/></svg>`,
-        openrouter: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#6366F1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.2" fill="#6366F1"/><circle cx="19" cy="6" r="2.2" fill="#6366F1"/><circle cx="19" cy="18" r="2.2" fill="#6366F1"/><path d="M7.2 12H11l3-6h2.8M11 12l3 6h2.8"/></svg>`,
-        ollama: `<svg viewBox="0 0 24 24" width="18" height="18"><rect width="24" height="24" rx="6" fill="#18181B"/><path fill="#FFF" d="M8.5 5.5c.8 0 1.4 1 1.6 2.3a6 6 0 0 1 3.8 0c.2-1.3.8-2.3 1.6-2.3.9 0 1.5 1.4 1.3 3.2A5.3 5.3 0 0 1 18 13v4.5c0 1.4-1.3 2.5-3 2.5H9c-1.7 0-3-1.1-3-2.5V13a5.3 5.3 0 0 1 1.2-4.3c-.2-1.8.4-3.2 1.3-3.2z"/><circle cx="10" cy="12.5" r="1" fill="#18181B"/><circle cx="14" cy="12.5" r="1" fill="#18181B"/><ellipse cx="12" cy="15.2" rx="1.6" ry="1.1" fill="#D4D4D8"/></svg>`,
-        custom: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"/></svg>`
-      };
-      logos['gemini-cli'] = logos.gemini;
-      logos['codex-cli'] = logos.openai.replace(/currentColor/g, '#10A37F');
-      return logos[prov] || logos.custom;
+    const PROV_ICON_MAP = {
+      'claude-cli': ['claude.svg', false],
+      anthropic: ['anthropic.svg', true],
+      agy: ['antigravity.svg', false],
+      'gemini-cli': ['gemini.svg', false],
+      gemini: ['gemini.svg', false],
+      'codex-cli': ['codex.svg', false],
+      openai: ['openai.svg', true],
+      openrouter: ['openrouter.svg', true],
+      ollama: ['ollama.svg', true]
+    };
+    function provLogoSvg(prov) {
+      const entry = PROV_ICON_MAP[prov];
+      if (entry) return `<img src="/icons/${entry[0]}" class="${entry[1] ? 'mono' : ''}" alt="" />`;
+      return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"/></svg>`;
     }
     function renderProvIcon(side, prov) {
       const iconEl = document.getElementById(side + 'Icon');
