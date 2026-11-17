@@ -43,10 +43,16 @@
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     .stack { display:flex; flex-direction:column; gap:10px; }
     .field-grid { display:grid; grid-template-columns:80px 1fr 1fr; gap:8px; align-items:center; }
-    .prov-box { display:flex; align-items:center; gap:7px; border:1px solid var(--line); border-radius:9px; background:var(--input); padding:0 8px; transition:border-color .15s; }
-    .prov-box:focus-within { border-color:var(--acc); }
-    .prov-box select { border:0; background:transparent; padding:8px 2px; flex:1; min-width:0; }
-    .prov-ico { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; flex-shrink:0; }
+    .prov-dd { position:relative; }
+    .prov-btn { width:100%; display:flex; align-items:center; justify-content:space-between; gap:7px; border:1px solid var(--line); border-radius:9px; background:var(--input); color:var(--text); padding:7px 10px; font-weight:500; cursor:pointer; }
+    .prov-btn:hover { background:var(--input); border-color:var(--acc); }
+    .prov-btn-l { display:flex; align-items:center; gap:7px; min-width:0; }
+    .prov-menu { position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 28px rgba(0,0,0,.18); padding:4px; z-index:40; display:none; max-height:240px; overflow-y:auto; }
+    .prov-menu.open { display:block; }
+    .prov-opt { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:7px; cursor:pointer; font-size:13px; }
+    .prov-opt:hover { background:var(--acc-soft); }
+    .prov-opt.sel { background:var(--acc-soft); font-weight:700; color:var(--acc); }
+    .prov-ico { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; flex-shrink:0; }
     @media (max-width:560px) { .field-grid { grid-template-columns:1fr; } }
 
     input, select, textarea, button {
@@ -155,18 +161,20 @@
         </div>
         <div class="field-grid">
           <span class="k-lbl">Backend</span>
-          <div class="prov-box">
-            <span id="beIcon" class="prov-ico"></span>
-            <select id="beProv" onchange="syncModels('be')"><option value="claude-cli">claude-cli</option><option value="agy">agy</option><option value="gemini-cli">gemini-cli</option><option value="codex-cli">codex-cli</option><option value="anthropic">anthropic</option><option value="gemini">gemini</option><option value="openai">openai</option><option value="openrouter">openrouter</option><option value="ollama">ollama</option><option value="custom">custom</option></select>
+          <div class="prov-dd" id="beDd">
+            <input type="hidden" id="beProv" value="claude-cli" />
+            <button type="button" class="prov-btn" onclick="toggleProvMenu('be',event)"><span class="prov-btn-l"><span id="beIcon" class="prov-ico"></span><span id="beLabel">claude-cli</span></span><span>▾</span></button>
+            <div id="beMenu" class="prov-menu"></div>
           </div>
           <select id="beModelSel" onchange="onModelPick('be')"></select>
         </div>
         <input id="beModelCustom" placeholder="Backend Custom Model ID" style="display:none;" />
         <div class="field-grid">
           <span class="k-lbl">Frontend</span>
-          <div class="prov-box">
-            <span id="feIcon" class="prov-ico"></span>
-            <select id="feProv" onchange="syncModels('fe')"><option value="agy">agy</option><option value="gemini-cli">gemini-cli</option><option value="gemini">gemini</option><option value="claude-cli">claude-cli</option><option value="codex-cli">codex-cli</option><option value="anthropic">anthropic</option><option value="openai">openai</option><option value="openrouter">openrouter</option><option value="ollama">ollama</option><option value="custom">custom</option></select>
+          <div class="prov-dd" id="feDd">
+            <input type="hidden" id="feProv" value="agy" />
+            <button type="button" class="prov-btn" onclick="toggleProvMenu('fe',event)"><span class="prov-btn-l"><span id="feIcon" class="prov-ico"></span><span id="feLabel">agy</span></span><span>▾</span></button>
+            <div id="feMenu" class="prov-menu"></div>
           </div>
           <select id="feModelSel" onchange="onModelPick('fe')"></select>
         </div>
@@ -499,10 +507,9 @@
     }
     function closeModal() { document.getElementById('modalBg').style.display = 'none'; }
 
-    function renderProvIcon(side, prov) {
-      const el = document.getElementById(side + 'Icon');
-      if (!el) return;
-      const g = `g-${side}`;
+    const PROVIDERS = ['claude-cli', 'agy', 'gemini-cli', 'codex-cli', 'anthropic', 'gemini', 'openai', 'openrouter', 'ollama', 'custom'];
+    function provLogoSvg(prov, uid) {
+      const g = `g-${uid}`;
       const logos = {
         'claude-cli': `<svg viewBox="0 0 24 24" width="18" height="18"><g stroke="#D97757" stroke-width="2.1" stroke-linecap="round"><line x1="12" y1="2.5" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="18.7" y2="18.7"/><line x1="18.7" y1="5.3" x2="5.3" y2="18.7"/><line x1="8.4" y1="3.2" x2="15.6" y2="20.8"/><line x1="20.8" y1="8.4" x2="3.2" y2="15.6"/></g><circle cx="12" cy="12" r="2.2" fill="#D97757"/></svg>`,
         anthropic: `<svg viewBox="0 0 24 24" width="18" height="18" fill="#D97757"><path d="M14.2 4h-2.9l5.9 16h2.9L14.2 4zm-5.4 0L3 20h2.9l1.2-3.5h5.7l1.2 3.5h2.9L11.1 4H8.8zm-.7 10 1.8-5.3 1.8 5.3H8.1z"/></svg>`,
@@ -515,8 +522,35 @@
       };
       logos['gemini-cli'] = logos.gemini;
       logos['codex-cli'] = logos.openai.replace(/currentColor/g, '#10A37F');
-      el.innerHTML = logos[prov] || logos.custom;
+      return logos[prov] || logos.custom;
     }
+    function renderProvIcon(side, prov) {
+      const iconEl = document.getElementById(side + 'Icon');
+      const lblEl = document.getElementById(side + 'Label');
+      const menuEl = document.getElementById(side + 'Menu');
+      if (iconEl) iconEl.innerHTML = provLogoSvg(prov, `${side}-cur`);
+      if (lblEl) lblEl.textContent = prov;
+      if (menuEl) {
+        menuEl.innerHTML = PROVIDERS.map(p =>
+          `<div class="prov-opt ${p === prov ? 'sel' : ''}" onclick="pickProv('${side}','${p}')"><span class="prov-ico">${provLogoSvg(p, `${side}-${p}`)}</span><span>${p}</span></div>`
+        ).join('');
+      }
+    }
+    function toggleProvMenu(side, ev) {
+      ev.stopPropagation();
+      const target = document.getElementById(side + 'Menu');
+      const open = target.classList.contains('open');
+      document.querySelectorAll('.prov-menu').forEach(m => m.classList.remove('open'));
+      if (!open) target.classList.add('open');
+    }
+    function pickProv(side, prov) {
+      document.getElementById(side + 'Prov').value = prov;
+      document.getElementById(side + 'Menu').classList.remove('open');
+      syncModels(side);
+    }
+    document.addEventListener('click', () => document.querySelectorAll('.prov-menu').forEach(m => m.classList.remove('open')));
+    renderProvIcon('be', 'claude-cli');
+    renderProvIcon('fe', 'agy');
     function syncModels(side, preferredVal) {
       const prov = document.getElementById(side + 'Prov').value;
       renderProvIcon(side, prov);
