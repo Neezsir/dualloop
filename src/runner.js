@@ -229,6 +229,99 @@ export function openTunnel(port) {
 }
 
 /**
+ * Inspect SQLite DB files in project dir and return table/row counts + primary file path.
+ */
+export async function inspectProjectDb(dir) {
+  const dbs = [];
+  const walk = (cur) => {
+    for (const entry of fs.readdirSync(cur, { withFileTypes: true })) {
+      if (['node_modules', '.git', '.dualloop-backup'].includes(entry.name)) continue;
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(db|sqlite|sqlite3)$/i.test(entry.name)) dbs.push(full);
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  if (!dbs.length) return { found: false, summary: 'ไม่พบไฟล์ SQLite (.db) ในโปรเจกต์' };
+
+  const { DatabaseSync } = await import('node:sqlite');
+  const lines = [];
+  for (const dbPath of dbs) {
+    const rel = path.relative(dir, dbPath);
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const tables = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all();
+      const counts = tables.map((t) => {
+        const c = db.prepare(`SELECT COUNT(*) AS n FROM "${t.name.replace(/"/g, '""')}"`).get();
+        return `${t.name}: ${c?.n ?? 0}`;
+      });
+      lines.push(`• ${rel} -> ${counts.join(', ') || '(no tables)'}`);
+    } finally {
+      db.close();
+    }
+  }
+  return { found: true, dbPath: dbs[0], summary: lines.join('\n') };
+}
+
+/**
+ * Generate Nginx and Caddy reverse proxy configs for a custom domain.
+ */
+export function generateDomainProxyConfigs(dir, state, domain) {
+  const cleanDomain = domain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+  const deployDir = path.join(dir, 'deploy');
+  fs.mkdirSync(deployDir, { recursive: true });
+
+  const nginx = `server {
+  listen 80;
+  server_name ${cleanDomain};
+  location / {
+    proxy_pass http://127.0.0.1:${state.port};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+  }
+}
+`;
+  const caddy = `${cleanDomain} {\n  reverse_proxy 127.0.0.1:${state.port}\n}\n`;
+  const nginxPath = path.join(deployDir, `nginx-${state.slug}.conf`);
+  const caddyPath = path.join(deployDir, `Caddyfile.${state.slug}`);
+  fs.writeFileSync(nginxPath, nginx, 'utf8');
+  fs.writeFileSync(caddyPath, caddy, 'utf8');
+  return { cleanDomain, nginxPath, caddyPath, nginx, caddy };
+}
+
+/**
+ * Return free disk space summary using Node built-in fs.statfsSync.
+ */
+export function getDiskFreeSummary(dir) {
+  try {
+    const s = fs.statfsSync(dir);
+    const freeGb = ((s.bfree * s.bsize) / 1024 ** 3).toFixed(1);
+    const totalGb = ((s.blocks * s.bsize) / 1024 ** 3).toFixed(1);
+    return `${freeGb} GB free / ${totalGb} GB`;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Auto-commit and push to git origin if configured on project repo.
+ */
+export function autoPushGitOrigin(dir, message) {
+  if (!fs.existsSync(path.join(dir, '.git'))) return { pushed: false };
+  const remote = runCmd('git remote get-url origin', dir);
+  if (!remote.ok || !remote.output) return { pushed: false };
+  runCmd('git add -A', dir);
+  runCmd(`git commit -m "${message.replace(/"/g, "'")}" --allow-empty`, dir);
+  const push = runCmd('git push', dir, 60000);
+  return { pushed: push.ok, output: push.output };
+}
+
+/**
  * Stop PM2 process and delete project directory safely.
  */
 export function deleteProject(dir, state) {

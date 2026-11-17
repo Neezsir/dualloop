@@ -1,0 +1,49 @@
+============================================================
+DUALLOOP SYSTEM TECHSTACK & ARCHITECTURE SPECIFICATION
+============================================================
+
+1. CORE RUNTIME
+- Runtime         : Node.js >= 20 (ESM "type": "module", tested on v24.13.0)
+- Dependencies    : ZERO external npm runtime packages (100% Node.js stdlib)
+- Built-in APIs   : fetch, WebSocket, FormData, Blob, node:sqlite (DatabaseSync),
+                    node:http, node:net, node:fs, node:child_process, node:readline
+- Process Manager : PM2 (fork mode, isolated ports, autorestart, pm2 save)
+- VCS & Backup    : Git checkpoints/rollback + .dualloop-backup SQLite snapshots
+
+2. INTERFACES & ENTRYPOINTS
+- CLI / npx       : bin/cli.js (ANSI arrow-key selector, init, doctor, run, continue)
+- Agent Skill     : skills/dualloop/SKILL.md (Antigravity, Claude Code, Codex, .agents)
+- Telegram 2-Way  : src/telegram.js (Inline Keyboards, Custom Text, Cancel, Media/Voice)
+- Web Dashboard   : src/dashboard.js + public/dashboard.html (127.0.0.1:4099)
+
+3. DUAL-AI PROVIDER MATRIX (src/ai.js + src/config.js)
+- Backend Role    : Architecture, Clarify, 3NF DB, Migration, API, Tests, Security
+- Frontend Role   : HTML/CSS/JS UI, Responsive Layout, API_CONTRACT.json client, E2E
+- Cross-AI Review : Opposite AI reviews contract/integration before verification
+- Supported CLIs  : claude-cli (Claude Team/Pro), agy (Google AI Ultra),
+                    gemini-cli (Gemini CLI), codex-cli (OpenAI Codex CLI)
+- Supported APIs  : anthropic, gemini (multimodal photo/voice), openai, openrouter,
+                    ollama (local offline), custom (DeepSeek, Groq, vLLM, LM Studio)
+- Resilience      : AUTO_FALLBACK chain + CLI_TIMEOUT_MS (180s) + MAX_AI_CALLS cap
+
+4. DATABASE & PROJECT WORKSPACE STANDARD
+- Workspace Root  : ~/Desktop/<project-slug>/ (cross-platform os.homedir())
+- State Files     : STATE.json, SPEC.md, DB_SCHEMA.sql, API_CONTRACT.json, PROJECT_RULES.md
+- DB Standard     : 3NF normalization, PKs, FOREIGN KEY ... REFERENCES ... ON DELETE,
+                    NOT NULL, UNIQUE, CHECK, FK indexes, PRAGMA foreign_keys = ON,
+                    idempotent ALTER TABLE migrations, auto-seed sample data
+
+5. 4-LAYER FULL-STACK VERIFICATION (src/runner.js)
+- Layer 1 Security: Scan source for hardcoded API keys/secrets & SQL string interpolation
+- Layer 2 PM2     : pm2 startOrRestart on isolated OS-verified port + pm2 jlist check
+- Layer 3 DB/API  : testCommand (FK constraint tests, CRUD, 4xx) + API_CONTRACT GET probe
+- Layer 4 UI/E2E  : Local asset check + e2eCommand + Headless Chrome/Edge CDP Probe
+                    (JS exceptions, console.error, HTTP >= 400, broken <img>,
+                     Desktop 1280px & Mobile 390px horizontal overflow, PNG screenshot)
+
+6. PRODUCTION OPERATIONS
+- Watchdog        : 45s PM2 crash monitor with Telegram [Restart] / [AI Fix] buttons
+- Health Report   : /health + 24h Disk & PM2 summary
+- Deploy Helpers  : /tunnel (cloudflared/zrok), /domain (Nginx/Caddy), /export (.zip/gh)
+- Self-Update     : /update (git pull --ff-only + pm2 restart dualloop)
+============================================================

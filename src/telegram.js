@@ -57,8 +57,8 @@ export class TelegramController {
     return this.sendMedia('sendPhoto', 'photo', filePath, 'preview.png', 'image/png', caption);
   }
 
-  sendDocument(filePath, filename = 'project.zip', caption = '') {
-    return this.sendMedia('sendDocument', 'document', filePath, filename, 'application/zip', caption);
+  sendDocument(filePath, filename = 'project.zip', caption = '', mime = 'application/zip') {
+    return this.sendMedia('sendDocument', 'document', filePath, filename, mime, caption);
   }
 
   /**

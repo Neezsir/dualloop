@@ -101,10 +101,12 @@ export function buildCompressedContext(dir, state) {
   const contract = readIfExists(path.join(dir, 'API_CONTRACT.json'), 4000);
   const schema = readIfExists(path.join(dir, 'DB_SCHEMA.sql'), 3000);
   const spec = readIfExists(path.join(dir, 'SPEC.md'), 3000);
+  const rules = readIfExists(path.join(dir, 'PROJECT_RULES.md'), 2000);
 
   return [
     `Project: ${state.name} | Port: ${state.port} | Phase: ${state.phase}`,
     `Concept: ${state.concept}`,
+    rules ? `PROJECT_RULES (STRICT):\n${rules}` : '',
     spec ? `SPEC:\n${spec}` : '',
     schema ? `DB_SCHEMA:\n${schema}` : '',
     contract ? `API_CONTRACT:\n${contract}` : '',

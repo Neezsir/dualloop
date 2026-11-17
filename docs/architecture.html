@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DualLoop — System Architecture &amp; Flow</title>
+  <style>
+    :root { --bg:#090e1a; --card:#121b30; --line:#253459; --text:#e8eef9; --muted:#94a3b8; --acc:#38bdf8; --ok:#22c55e; --warn:#f59e0b; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+    .wrap { max-width:1200px; margin:0 auto; }
+    h1 { margin:0 0 6px; font-size:24px; }
+    p.sub { margin:0 0 20px; color:var(--muted); font-size:14px; }
+    .tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+    .tab { background:var(--card); border:1px solid var(--line); color:var(--text); padding:8px 14px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px; }
+    .tab.active { background:#0284c7; border-color:#0284c7; }
+    .diagram-box { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; overflow:auto; }
+    .flow { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-top:16px; }
+    .node { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; cursor:pointer; transition:.15s; }
+    .node:hover, .node.selected { border-color:var(--acc); transform:translateY(-2px); }
+    .node h3 { margin:0 0 6px; font-size:15px; color:var(--acc); }
+    .node p { margin:0; font-size:13px; color:var(--muted); line-height:1.45; }
+    .detail { background:#0d1527; border:1px solid var(--acc); border-radius:12px; padding:16px; margin-top:16px; }
+    pre { background:#070b14; border:1px solid var(--line); padding:12px; border-radius:8px; overflow:auto; font-size:12px; color:#cbd5e1; white-space:pre-wrap; }
+    img { max-width:100%; height:auto; display:block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>⚡ DualLoop System Architecture &amp; Full-Loop Flow</h1>
+    <p class="sub">Interactive System Map · Click any component below to inspect files, rules, and data flow.</p>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('svg', this)">System Diagram (SVG)</button>
+      <button class="tab" onclick="showTab('flow', this)">Interactive Flow Nodes</button>
+      <button class="tab" onclick="showTab('stack', this)">Techstack Spec</button>
+    </div>
+
+    <div id="tab-svg" class="diagram-box">
+      <img src="./system-diagram.svg" alt="DualLoop System Architecture Diagram" />
+    </div>
+
+    <div id="tab-flow" style="display:none;">
+      <div class="flow" id="flowGrid"></div>
+      <div class="detail" id="detailBox">
+        <strong id="detailTitle">เลือก Node ด้านบนเพื่อดูรายละเอียด</strong>
+        <p id="detailDesc" style="color:var(--muted);margin:8px 0 0;font-size:13px;"></p>
+      </div>
+    </div>
+
+    <div id="tab-stack" class="diagram-box" style="display:none;">
+      <pre id="stackPre">Loading TECHSTACK.txt...</pre>
+    </div>
+  </div>
+
+  <script>
+    const NODES = [
+      { title: '1. Entry Channels', file: 'src/telegram.js, src/dashboard.js, bin/cli.js, skills/dualloop/SKILL.md',
+        desc: 'รับคำสั่งจาก Telegram (ปุ่มกด, พิมพ์ตอบเอง, รูป UI, เสียง), Web Dashboard (:4099), Terminal CLI (ลูกศร ↑/↓), และ IDE Agent Skill' },
+      { title: '2. Orchestrator & Queue', file: 'src/orchestrator.js, src/state.js',
+        desc: 'คุมคิวงานต่อเนื่อง (Job Queue), Auto-Resume หลัง PM2 รีสตาร์ต, Budget Cap (MAX_AI_CALLS), Templates, PROJECT_RULES.md และแจ้งเตือนแบ่ง 4 เฟสละเอียด' },
+      { title: '3. Phase 1: Clarify & Contracts', file: 'src/ai.js (clarifyStep)',
+        desc: 'สัมภาษณ์แบบเลือกติ๊ก (grill-me + Ponytail) พร้อมเลือก UI Theme Preset จนได้ SPEC.md, DB_SCHEMA.sql (3NF + FK), และ API_CONTRACT.json' },
+      { title: '4. Phase 2: Checkpoint & Port', file: 'src/runner.js',
+        desc: 'จอง Port ว่างจริงใน OS (net.createServer), สร้าง Git Checkpoint Commit และ Backup ไฟล์ SQLite (.dualloop-backup)' },
+      { title: '5. Phase 3: Dual-AI Build + Review', file: 'src/ai.js (executeTask, crossReview)',
+        desc: 'Backend AI (DB, Migration, Seed, API, Tests, Security) + Frontend AI (UI, E2E) พร้อม Skip-on-Block, Schema Guard, Auto-Fallback 10 ค่าย และ Cross-AI Review' },
+      { title: '6. Phase 4: 4-Layer Verify', file: 'src/runner.js (verifyProject)',
+        desc: '1) Security Scan (Secrets & SQLi) -> 2) PM2 online + save -> 3) DB/API Tests + Contract GET -> 4) Headless Chrome CDP (1280px/390px, Broken Img, PNG Screenshot)' },
+      { title: '7. Production Ops & Watchdog', file: 'src/orchestrator.js, src/runner.js',
+        desc: 'เฝ้า PM2 ทุก 45 วิแจ้งแครชเข้าแชท, รายงาน Health/Disk 24 ชม., /db, /env, /tunnel, /domain, /export (.zip/gh), /update และ auto-push origin' }
+    ];
+
+    const grid = document.getElementById('flowGrid');
+    grid.innerHTML = NODES.map((n, i) => `
+      <div class="node" onclick="pickNode(${i}, this)">
+        <h3>${n.title}</h3>
+        <p>${n.file}</p>
+      </div>
+    `).join('');
+
+    function pickNode(i, el) {
+      document.querySelectorAll('.node').forEach(x => x.classList.remove('selected'));
+      el.classList.add('selected');
+      document.getElementById('detailTitle').textContent = `${NODES[i].title} — (${NODES[i].file})`;
+      document.getElementById('detailDesc').textContent = NODES[i].desc;
+    }
+
+    function showTab(id, btn) {
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      ['svg', 'flow', 'stack'].forEach(t => {
+        document.getElementById('tab-' + t).style.display = t === id ? 'block' : 'none';
+      });
+    }
+
+    fetch('./TECHSTACK.txt').then(r => r.ok ? r.text() : '').then(t => {
+      if (t) document.getElementById('stackPre').textContent = t;
+    }).catch(() => {});
+  </script>
+</body>
+</html>

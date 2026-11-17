@@ -15,10 +15,14 @@ import { analyzeTelegramMedia, clarifyStep, crossReview, executeTask } from './a
 import {
   allocatePort,
   applyFileChanges,
+  autoPushGitOrigin,
   deleteProject,
   exportProjectZip,
+  generateDomainProxyConfigs,
+  getDiskFreeSummary,
   gitCheckpoint,
   gitRollback,
+  inspectProjectDb,
   openTunnel,
   readProjectEnvMasked,
   runCmd,
@@ -27,6 +31,7 @@ import {
   updateProjectEnv,
   verifyProject
 } from './runner.js';
+import { startDashboard } from './dashboard.js';
 import { TelegramController } from './telegram.js';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -260,13 +265,15 @@ export async function runProjectLoop({
         state.phase = state.blockedQuestions.length ? 'waiting_decisions' : 'done';
         appendHistory(state, 'Verified & online via PM2');
         saveState(dir, state);
+        const pushed = config.autoPushOrigin ? autoPushGitOrigin(dir, `verified: ${state.slug}`) : { pushed: false };
         const dur = formatDuration(m.startedAt, m.finishedAt);
         const doneMsg =
           `🎉 [เสร็จสมบูรณ์ 4/4] ${state.name}\n` +
           `PM2: ${state.pm2Name} (online)\n` +
           `🔗 URL: ${previewUrls(state.port, config)}\n` +
-          `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}\n` +
-          `📂 Path: ${dir}` +
+          `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}` +
+          (pushed.pushed ? `\n🐙 Git: auto-pushed origin` : '') +
+          `\n📂 Path: ${dir}` +
           (state.blockedQuestions.length
             ? `\n\n⚠️ มี ${state.blockedQuestions.length} คำถามที่ข้ามไว้ (พิมพ์ /questions เพื่อตอบ)`
             : '');
@@ -464,7 +471,11 @@ async function startDaemon() {
             '/status — สถานะโปรเจกต์ + คิว + PM2',
             '/logs <slug> — ดู log ล่าสุด',
             '/env <slug> [KEY=VALUE] — ดู/แก้ .env โปรเจกต์ + รีสตาร์ต PM2',
+            '/db <slug> — ดูตาราง SQLite + ดาวน์โหลด Backup',
+            '/rule <slug> | <กฎ> — เพิ่มกฎเฉพาะโปรเจกต์ (PROJECT_RULES.md)',
+            '/domain <slug> <domain> — สร้าง Nginx/Caddy Reverse Proxy',
             '/tunnel <slug> | /tunnel stop <slug> — เปิด/ปิดลิงก์ HTTPS ชั่วคราว',
+            '/health — สรุปสุขภาพระบบ + พื้นที่ Disk + PM2',
             '/model <backend|frontend> [provider] <model-id> — สลับโมเดล/ค่าย',
             '/export <slug> — ส่งออก .zip หรือขึ้น GitHub',
             '/stats — สรุปเวลาและจำนวนรอบ AI ของแต่ละโปรเจกต์',
@@ -479,6 +490,62 @@ async function startDaemon() {
 
       if (text.startsWith('/templates')) {
         await notify(`📋 Templates:\n${Object.keys(TEMPLATES).map((k) => `• ${k}`).join('\n')}\nใช้: /new --tpl <name> <app> | <concept>`);
+        return;
+      }
+
+      if (text.startsWith('/health')) {
+        const projects = listProjects(config.workspacesDir);
+        const disk = getDiskFreeSummary(config.workspacesDir);
+        const pm2 = runCmd('pm2 status --no-color', process.cwd());
+        await notify(
+          `🩺 System Health\nDisk: ${disk}\nProjects: ${projects.length} | Queue: ${jobQueue.length}\nDashboard: http://127.0.0.1:${config.dashboardPort}\n\n${pm2.output.slice(0, 1200)}`
+        );
+        return;
+      }
+
+      if (text.startsWith('/db')) {
+        const slug = text.replace('/db', '').trim();
+        const dir = path.join(config.workspacesDir, slug);
+        const state = loadState(dir);
+        if (!state) return notify(`Not found: ${slug}`);
+        const info = await inspectProjectDb(dir);
+        if (!info.found) return notify(info.summary);
+        await notify(`🗄️ DB (${slug}):\n${info.summary}`);
+        const dl = await askChoice(
+          `ต้องการดาวน์โหลดไฟล์ Backup (${path.basename(info.dbPath)}) เข้าแชทไหม?`,
+          ['📥 ส่งไฟล์ .db', 'ไม่ต้อง'],
+          false,
+          { allowCustom: false, allowCancel: false }
+        );
+        if (dl.includes('ส่งไฟล์')) {
+          await bot.sendDocument(info.dbPath, path.basename(info.dbPath), `🗄️ DB Backup: ${slug}`, 'application/octet-stream');
+        }
+        return;
+      }
+
+      if (text.startsWith('/rule ')) {
+        const raw = text.slice(6).trim();
+        const [slug, ...rest] = raw.split('|');
+        const dir = path.join(config.workspacesDir, slug.trim());
+        const state = loadState(dir);
+        const rule = rest.join('|').trim();
+        if (!state || !rule) return notify('ใช้: /rule <slug> | <ข้อกำหนดเฉพาะโปรเจกต์>');
+        const ruleFile = path.join(dir, 'PROJECT_RULES.md');
+        fs.appendFileSync(ruleFile, `- ${rule}\n`, 'utf8');
+        await notify(`📜 เพิ่มกฎให้ ${slug} แล้ว:\n${fs.readFileSync(ruleFile, 'utf8')}`);
+        return;
+      }
+
+      if (text.startsWith('/domain ')) {
+        const [, slug, domain] = text.trim().split(/\s+/);
+        const dir = path.join(config.workspacesDir, slug || '');
+        const state = loadState(dir);
+        if (!state || !domain) return notify('ใช้: /domain <slug> <domain.com>');
+        const proxy = generateDomainProxyConfigs(dir, state, domain);
+        await notify(
+          `🌍 สร้าง Reverse Proxy สำหรับ ${proxy.cleanDomain} -> 127.0.0.1:${state.port} แล้ว:\n` +
+            `Nginx: ${proxy.nginxPath}\nCaddy: ${proxy.caddyPath}\n\nCaddyfile:\n${proxy.caddy}`
+        );
         return;
       }
 
@@ -732,7 +799,27 @@ async function startDaemon() {
   });
 
   console.log('DualLoop Telegram Bot polling started...');
-  await bot.send('DualLoop Bot พร้อมทำงานแล้ว (/help)');
+  startDashboard({
+    config,
+    getQueueInfo: () => ({ queueSize: jobQueue.length, running }),
+    onNewProject: async (name, concept) => {
+      const port = await allocatePort(config.workspacesDir, config.basePort);
+      const { dir, state } = createProjectState(config.workspacesDir, name, concept, port);
+      jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+      processQueue();
+      return { dir, state };
+    },
+    onResumeProject: (dir, state) => {
+      const hasPending = state.tasks.some((t) => t.status === 'pending');
+      state.phase = !state.tasks.length ? 'clarify' : hasPending ? 'build' : 'verify';
+      state.fixLoops = 0;
+      saveState(dir, state);
+      jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+      processQueue();
+    }
+  });
+
+  await bot.send(`DualLoop Bot พร้อมทำงานแล้ว (/help)\n🖥️ Dashboard: http://127.0.0.1:${config.dashboardPort}`);
 
   // Auto-resume interrupted builds/verifications after PM2 restart
   const interrupted = listProjects(config.workspacesDir).filter(
@@ -785,6 +872,14 @@ async function startDaemon() {
       }
     }
   }, 45000);
+
+  // Daily Health & Disk Report (every 24h)
+  setInterval(() => {
+    const projects = listProjects(config.workspacesDir);
+    const disk = getDiskFreeSummary(config.workspacesDir);
+    const done = projects.filter((p) => p.state.phase === 'done').length;
+    notify(`📆 [Daily Health Report]\nProjects: ${projects.length} (done: ${done})\nDisk: ${disk}`).catch(() => {});
+  }, 24 * 60 * 60 * 1000);
 
   await bot.startPolling();
 }

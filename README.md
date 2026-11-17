@@ -33,6 +33,10 @@ pm2 start ecosystem.config.cjs
 - `/status` — Show project states, job queue & PM2 status
 - `/logs <slug>` — Tail PM2 logs
 - `/env <slug> [KEY=VALUE]` — Inspect or update project `.env` & restart PM2
+- `/db <slug>` — Inspect SQLite tables/rows & download `.db` backup
+- `/rule <slug> | <rule>` — Save project-specific AI rules (`PROJECT_RULES.md`)
+- `/domain <slug> <domain>` — Generate Nginx & Caddy reverse proxy configs
+- `/health` — System health, PM2 & disk summary (plus daily 24h report)
 - `/tunnel <slug>` / `/tunnel stop <slug>` — Open/close temporary HTTPS preview URL
 - `/model <backend|frontend> [provider] <model-id>` — Switch provider/model live
 - `/export <slug>` — Export project `.zip` to chat or push to GitHub repo

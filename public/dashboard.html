@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DualLoop Control Dashboard</title>
+  <style>
+    :root { --bg:#0b1020; --card:#131b31; --line:#233054; --text:#e7edf8; --muted:#95a3c3; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --acc:#38bdf8; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+    .wrap { max-width:1180px; margin:0 auto; }
+    header { display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center; margin-bottom:18px; }
+    h1 { margin:0; font-size:22px; }
+    .meta { color:var(--muted); font-size:13px; }
+    .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    input, select, button { background:#0c1324; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 11px; font-size:13px; }
+    input { flex:1; min-width:180px; }
+    button { cursor:pointer; background:#1c294a; font-weight:600; }
+    button:hover { border-color:var(--acc); }
+    button.primary { background:#0284c7; border-color:#0284c7; }
+    button.danger { background:#7f1d1d; border-color:#991b1b; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; }
+    .online { background:rgba(34,197,94,.16); color:var(--ok); }
+    .warn { background:rgba(245,158,11,.16); color:var(--warn); }
+    .err { background:rgba(239,68,68,.16); color:var(--err); }
+    img.preview { width:100%; max-height:170px; object-fit:cover; border-radius:8px; border:1px solid var(--line); margin-top:10px; background:#090d18; }
+    pre { background:#080c18; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; overflow:auto; max-height:220px; white-space:pre-wrap; }
+    .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>⚡ DualLoop Control Dashboard</h1>
+        <div id="sysMeta" class="meta">Loading...</div>
+      </div>
+      <div class="row">
+        <a href="/docs/architecture.html" target="_blank" style="color:var(--acc);font-size:13px;text-decoration:none;">Architecture Diagram ↗</a>
+        <button onclick="loadData()">↻ Refresh</button>
+      </div>
+    </header>
+
+    <div class="panel">
+      <div class="row">
+        <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
+        <input id="appConcept" placeholder="อธิบาย Concept โปรแกรม..." style="flex:2;" />
+        <button class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
+      </div>
+    </div>
+
+    <div id="projectsGrid" class="grid"></div>
+
+    <div id="logBox" class="panel" style="display:none; margin-top:16px;">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+        <strong id="logTitle">Logs</strong>
+        <button onclick="document.getElementById('logBox').style.display='none'">ปิด</button>
+      </div>
+      <pre id="logText"></pre>
+    </div>
+  </div>
+
+  <script>
+    async function loadData() {
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      document.getElementById('sysMeta').textContent =
+        `Queue: ${data.queueSize} | Running: ${data.running ? 'YES' : 'IDLE'} | Disk: ${data.disk} | Updated: ${new Date().toLocaleTimeString()}`;
+
+      const grid = document.getElementById('projectsGrid');
+      if (!data.projects.length) {
+        grid.innerHTML = '<div class="panel">ยังไม่มีโปรเจกต์ (สร้างด้านบนหรือพิมพ์ /new ใน Telegram)</div>';
+        return;
+      }
+
+      grid.innerHTML = data.projects.map(p => {
+        const cls = p.pm2Status === 'online' ? 'online' : (p.phase === 'error' ? 'err' : 'warn');
+        return `
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;">
+              <strong>${esc(p.name)}</strong>
+              <span class="badge ${cls}">${esc(p.phase)} / ${esc(p.pm2Status)}</span>
+            </div>
+            <div class="meta" style="margin:6px 0;">
+              Slug: <code>${esc(p.slug)}</code> · Port: <a href="http://127.0.0.1:${p.port}" target="_blank" style="color:var(--acc)">${p.port}</a><br/>
+              BE calls: ${p.metrics?.aiCalls?.backend || 0} · FE calls: ${p.metrics?.aiCalls?.frontend || 0} · Fix: ${p.metrics?.totalFixLoops || 0}
+            </div>
+            ${p.hasPreview ? `<img class="preview" src="/api/preview/${encodeURIComponent(p.slug)}?t=${Date.now()}" alt="preview"/>` : ''}
+            <div class="actions">
+              <button onclick="act('${p.slug}','restart')">Restart</button>
+              <button onclick="act('${p.slug}','resume')">Resume</button>
+              <button onclick="viewLogs('${p.slug}')">Logs</button>
+              <button onclick="act('${p.slug}','rollback')">Rollback</button>
+              <button class="danger" onclick="if(confirm('ลบ ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    async function act(slug, action) {
+      const r = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug, action })
+      });
+      const j = await r.json();
+      if (!r.ok) alert(j.error || 'Failed');
+      loadData();
+    }
+
+    async function viewLogs(slug) {
+      const r = await fetch(`/api/logs/${encodeURIComponent(slug)}`);
+      const j = await r.json();
+      document.getElementById('logTitle').textContent = `PM2 Logs: ${slug}`;
+      document.getElementById('logText').textContent = j.logs || '(empty)';
+      document.getElementById('logBox').style.display = 'block';
+    }
+
+    async function createNew() {
+      const name = document.getElementById('appName').value.trim();
+      const concept = document.getElementById('appConcept').value.trim();
+      if (!name) return alert('กรุณาใส่ชื่อโปรเจกต์');
+      const r = await fetch('/api/new', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, concept: concept || name })
+      });
+      const j = await r.json();
+      if (!r.ok) return alert(j.error || 'Failed');
+      document.getElementById('appName').value = '';
+      document.getElementById('appConcept').value = '';
+      loadData();
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    loadData();
+    setInterval(loadData, 6000);
+  </script>
+</body>
+</html>

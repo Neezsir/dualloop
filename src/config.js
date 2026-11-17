@@ -74,10 +74,12 @@ export function loadConfig() {
     telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
     workspacesDir: resolveWorkspacesDir(process.env.WORKSPACES_DIR),
     publicHost: (process.env.PUBLIC_HOST || '').replace(/\/+$/, ''),
+    dashboardPort: Number(process.env.DASHBOARD_PORT || 4099),
     basePort: Number(process.env.BASE_PORT || 4100),
     maxFixLoops: Number(process.env.MAX_FIX_LOOPS || 4),
     maxAiCalls: Number(process.env.MAX_AI_CALLS || 20),
     enableCrossReview: process.env.ENABLE_CROSS_REVIEW !== 'false',
+    autoPushOrigin: process.env.AUTO_PUSH_ORIGIN !== 'false',
     cliTimeoutMs: Number(process.env.CLI_TIMEOUT_MS || 180000),
     ponytailLevel: process.env.PONYTAIL_LEVEL || 'full',
     autoFallback: process.env.AUTO_FALLBACK !== 'false'
