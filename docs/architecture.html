@@ -5,29 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DualLoop — System Architecture &amp; Flow</title>
   <style>
-    :root { --bg:#090e1a; --card:#121b30; --line:#253459; --text:#e8eef9; --muted:#94a3b8; --acc:#38bdf8; --ok:#22c55e; --warn:#f59e0b; }
+    :root { --bg:#f8fafc; --card:#ffffff; --line:#e2e8f0; --text:#0f172a; --muted:#475569; --pre:#f1f5f9; --acc:#0284c7; }
+    [data-theme="dark"] { --bg:#090e1a; --card:#121b30; --line:#253459; --text:#e8eef9; --muted:#94a3b8; --pre:#070b14; --acc:#38bdf8; }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:24px; }
+    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:24px; transition:background .15s,color .15s; }
     .wrap { max-width:1200px; margin:0 auto; }
     h1 { margin:0 0 6px; font-size:24px; }
     p.sub { margin:0 0 20px; color:var(--muted); font-size:14px; }
-    .tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+    .tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; align-items:center; }
     .tab { background:var(--card); border:1px solid var(--line); color:var(--text); padding:8px 14px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px; }
-    .tab.active { background:#0284c7; border-color:#0284c7; }
+    .tab.active { background:#0284c7; border-color:#0284c7; color:#fff; }
     .diagram-box { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; overflow:auto; }
     .flow { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-top:16px; }
     .node { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; cursor:pointer; transition:.15s; }
     .node:hover, .node.selected { border-color:var(--acc); transform:translateY(-2px); }
     .node h3 { margin:0 0 6px; font-size:15px; color:var(--acc); }
     .node p { margin:0; font-size:13px; color:var(--muted); line-height:1.45; }
-    .detail { background:#0d1527; border:1px solid var(--acc); border-radius:12px; padding:16px; margin-top:16px; }
-    pre { background:#070b14; border:1px solid var(--line); padding:12px; border-radius:8px; overflow:auto; font-size:12px; color:#cbd5e1; white-space:pre-wrap; }
-    img { max-width:100%; height:auto; display:block; }
+    .detail { background:var(--card); border:1px solid var(--acc); border-radius:12px; padding:16px; margin-top:16px; }
+    pre { background:var(--pre); border:1px solid var(--line); padding:12px; border-radius:8px; overflow:auto; font-size:12px; color:var(--text); white-space:pre-wrap; }
+    img { max-width:100%; height:auto; display:block; border-radius:8px; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>⚡ DualLoop System Architecture &amp; Full-Loop Flow</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h1>⚡ DualLoop System Architecture &amp; Full-Loop Flow</h1>
+      <button id="themeBtn" class="tab" onclick="toggleTheme()">🌙 Dark</button>
+    </div>
     <p class="sub">Interactive System Map · Click any component below to inspect files, rules, and data flow.</p>
 
     <div class="tabs">
@@ -93,6 +97,17 @@
         document.getElementById('tab-' + t).style.display = t === id ? 'block' : 'none';
       });
     }
+
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('dualloop-theme', t);
+      document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
+    }
+    function toggleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme') || 'light';
+      applyTheme(cur === 'dark' ? 'light' : 'dark');
+    }
+    applyTheme(localStorage.getItem('dualloop-theme') || 'light');
 
     fetch('./TECHSTACK.txt').then(r => r.ok ? r.text() : '').then(t => {
       if (t) document.getElementById('stackPre').textContent = t;

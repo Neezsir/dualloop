@@ -75,6 +75,7 @@ export function loadConfig() {
     workspacesDir: resolveWorkspacesDir(process.env.WORKSPACES_DIR),
     publicHost: (process.env.PUBLIC_HOST || '').replace(/\/+$/, ''),
     dashboardPort: Number(process.env.DASHBOARD_PORT || 4099),
+    dashboardPassword: process.env.DASHBOARD_PASSWORD || '',
     webhookSecret: process.env.WEBHOOK_SECRET || '',
     basePort: Number(process.env.BASE_PORT || 4100),
     maxFixLoops: Number(process.env.MAX_FIX_LOOPS || 4),

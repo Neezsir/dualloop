@@ -267,6 +267,37 @@ export async function inspectProjectDb(dir) {
 }
 
 /**
+ * Read table names and up to 20 sample rows per table from project SQLite DB (read-only).
+ */
+export async function inspectProjectDbData(dir) {
+  const info = await inspectProjectDb(dir);
+  if (!info.found) return { found: false, tables: [] };
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(info.dbPath, { readOnly: true });
+  try {
+    const names = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      .all()
+      .map((r) => r.name);
+    const tables = names.map((name) => {
+      const safe = name.replace(/"/g, '""');
+      const rows = db.prepare(`SELECT * FROM "${safe}" LIMIT 20`).all();
+      return { name, rows };
+    });
+    return { found: true, dbFile: path.basename(info.dbPath), tables };
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Stop a project's PM2 app without deleting its files.
+ */
+export function stopProjectPm2(dir, state) {
+  return runCmd(`pm2 stop ${state.pm2Name}`, dir);
+}
+
+/**
  * Generate Nginx and Caddy reverse proxy configs for a custom domain.
  */
 export function generateDomainProxyConfigs(dir, state, domain) {

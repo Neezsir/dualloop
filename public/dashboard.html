@@ -5,28 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DualLoop Control Dashboard</title>
   <style>
-    :root { --bg:#0b1020; --card:#131b31; --line:#233054; --text:#e7edf8; --muted:#95a3c3; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --acc:#38bdf8; }
+    :root {
+      --bg:#f8fafc; --card:#ffffff; --line:#e2e8f0; --text:#0f172a; --muted:#475569;
+      --input:#f8fafc; --btn:#f1f5f9; --pre:#f1f5f9; --ok:#16a34a; --warn:#d97706; --err:#dc2626; --acc:#0284c7;
+    }
+    [data-theme="dark"] {
+      --bg:#0b1020; --card:#131b31; --line:#233054; --text:#e7edf8; --muted:#95a3c3;
+      --input:#0c1324; --btn:#1c294a; --pre:#080c18; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --acc:#38bdf8;
+    }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:20px; }
-    .wrap { max-width:1180px; margin:0 auto; }
+    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:20px; transition:background .15s,color .15s; }
+    .wrap { max-width:1200px; margin:0 auto; }
     header { display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center; margin-bottom:18px; }
     h1 { margin:0; font-size:22px; }
     .meta { color:var(--muted); font-size:13px; }
-    .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; }
-    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    input, select, button { background:#0c1324; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 11px; font-size:13px; }
-    input { flex:1; min-width:180px; }
-    button { cursor:pointer; background:#1c294a; font-weight:600; }
+    .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    input, select, button { background:var(--input); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:13px; }
+    input { flex:1; min-width:140px; }
+    button { cursor:pointer; background:var(--btn); font-weight:600; }
     button:hover { border-color:var(--acc); }
-    button.primary { background:#0284c7; border-color:#0284c7; }
-    button.danger { background:#7f1d1d; border-color:#991b1b; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px; }
+    button.primary { background:#0284c7; border-color:#0284c7; color:#fff; }
+    button.danger { background:#dc2626; border-color:#dc2626; color:#fff; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
     .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; }
-    .online { background:rgba(34,197,94,.16); color:var(--ok); }
-    .warn { background:rgba(245,158,11,.16); color:var(--warn); }
-    .err { background:rgba(239,68,68,.16); color:var(--err); }
-    img.preview { width:100%; max-height:170px; object-fit:cover; border-radius:8px; border:1px solid var(--line); margin-top:10px; background:#090d18; }
-    pre { background:#080c18; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; overflow:auto; max-height:220px; white-space:pre-wrap; }
+    .online { background:rgba(22,163,74,.14); color:var(--ok); }
+    .warn { background:rgba(217,119,6,.14); color:var(--warn); }
+    .err { background:rgba(220,38,38,.14); color:var(--err); }
+    img.preview { width:100%; max-height:170px; object-fit:cover; border-radius:8px; border:1px solid var(--line); margin-top:10px; background:var(--pre); }
+    pre { background:var(--pre); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; overflow:auto; max-height:240px; white-space:pre-wrap; }
+    table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:12px; }
+    th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
     .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
   </style>
 </head>
@@ -38,22 +47,41 @@
         <div id="sysMeta" class="meta">Loading...</div>
       </div>
       <div class="row">
-        <a href="/docs/architecture.html" target="_blank" style="color:var(--acc);font-size:13px;text-decoration:none;">Architecture Diagram ↗</a>
+        <a href="/docs/architecture.html" target="_blank" style="color:var(--acc);font-size:13px;text-decoration:none;font-weight:600;">Architecture Diagram ↗</a>
+        <button id="themeBtn" onclick="toggleTheme()">🌙 Dark</button>
         <button onclick="loadData()">↻ Refresh</button>
       </div>
     </header>
 
     <div class="panel">
-      <div class="row">
+      <div class="row" style="margin-bottom:10px;">
         <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
         <input id="appConcept" placeholder="อธิบาย Concept โปรแกรม..." style="flex:2;" />
         <button class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
+      </div>
+      <div class="row" style="border-top:1px solid var(--line);padding-top:10px;">
+        <span class="meta">Backend:</span>
+        <select id="beProv"><option>claude-cli</option><option>anthropic</option><option>codex-cli</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+        <input id="beModel" placeholder="Backend Model" style="max-width:190px;" />
+        <span class="meta">Frontend:</span>
+        <select id="feProv"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+        <input id="feModel" placeholder="Frontend Model" style="max-width:190px;" />
+        <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="autoFb" style="min-width:auto;flex:0;" /> Auto-Fallback</label>
+        <button onclick="saveAiConfig()">บันทึก AI</button>
       </div>
     </div>
 
     <div id="questionBanner" class="panel" style="display:none;border-color:var(--warn);"></div>
 
     <div id="projectsGrid" class="grid"></div>
+
+    <div id="inspectorBox" class="panel" style="display:none; margin-top:16px;">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+        <strong id="inspectorTitle">Inspector</strong>
+        <button onclick="document.getElementById('inspectorBox').style.display='none'">ปิด</button>
+      </div>
+      <div id="inspectorBody"></div>
+    </div>
 
     <div class="panel" style="margin-top:16px;">
       <div class="row" style="justify-content:space-between;margin-bottom:8px;">
@@ -62,17 +90,46 @@
       </div>
       <pre id="feedBox" style="max-height:190px;"></pre>
     </div>
-
-    <div id="logBox" class="panel" style="display:none; margin-top:16px;">
-      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
-        <strong id="logTitle">Logs</strong>
-        <button onclick="document.getElementById('logBox').style.display='none'">ปิด</button>
-      </div>
-      <pre id="logText"></pre>
-    </div>
   </div>
 
   <script>
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('dualloop-theme', t);
+      document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
+    }
+    function toggleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme') || 'light';
+      applyTheme(cur === 'dark' ? 'light' : 'dark');
+    }
+    applyTheme(localStorage.getItem('dualloop-theme') || 'light');
+
+    async function loadAiConfig() {
+      const r = await fetch('/api/ai-config');
+      if (!r.ok) return;
+      const c = await r.json();
+      document.getElementById('beProv').value = c.backendProvider;
+      document.getElementById('beModel').value = c.backendModel;
+      document.getElementById('feProv').value = c.frontendProvider;
+      document.getElementById('feModel').value = c.frontendModel;
+      document.getElementById('autoFb').checked = Boolean(c.autoFallback);
+    }
+
+    async function saveAiConfig() {
+      const r = await fetch('/api/ai-config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          backendProvider: document.getElementById('beProv').value,
+          backendModel: document.getElementById('beModel').value.trim(),
+          frontendProvider: document.getElementById('feProv').value,
+          frontendModel: document.getElementById('feModel').value.trim(),
+          autoFallback: document.getElementById('autoFb').checked
+        })
+      });
+      if (r.ok) alert('บันทึกค่า AI ชั่วคราวแล้ว');
+    }
+
     async function act(slug, action) {
       const r = await fetch('/api/action', {
         method: 'POST',
@@ -87,9 +144,26 @@
     async function viewLogs(slug) {
       const r = await fetch(`/api/logs/${encodeURIComponent(slug)}`);
       const j = await r.json();
-      document.getElementById('logTitle').textContent = `PM2 Logs: ${slug}`;
-      document.getElementById('logText').textContent = j.logs || '(empty)';
-      document.getElementById('logBox').style.display = 'block';
+      document.getElementById('inspectorTitle').textContent = `PM2 Logs: ${slug}`;
+      document.getElementById('inspectorBody').innerHTML = `<pre>${esc(j.logs || '(empty)')}</pre>`;
+      document.getElementById('inspectorBox').style.display = 'block';
+    }
+
+    async function viewDb(slug) {
+      const r = await fetch(`/api/db/${encodeURIComponent(slug)}`);
+      const j = await r.json();
+      document.getElementById('inspectorTitle').textContent = `🗄️ DB Viewer: ${slug} (${j.dbFile || 'no SQLite'})`;
+      if (!j.found) {
+        document.getElementById('inspectorBody').innerHTML = '<div class="meta">ไม่พบไฟล์ SQLite (.db)</div>';
+      } else {
+        document.getElementById('inspectorBody').innerHTML = j.tables.map(t => {
+          if (!t.rows.length) return `<h4>${esc(t.name)} (0 rows)</h4>`;
+          const cols = Object.keys(t.rows[0]);
+          return `<h4>${esc(t.name)} (${t.rows.length} rows shown)</h4><div style="overflow:auto;"><table><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>` +
+            t.rows.map(row => `<tr>${cols.map(c => `<td>${esc(row[c])}</td>`).join('')}</tr>`).join('') + '</table></div>';
+        }).join('');
+      }
+      document.getElementById('inspectorBox').style.display = 'block';
     }
 
     async function createNew() {
@@ -211,8 +285,10 @@
             ${p.hasPreview ? `<img class="preview" src="/api/preview/${encodeURIComponent(p.slug)}?t=${Date.now()}" alt="preview"/>` : ''}
             <div class="actions">
               <button onclick="act('${p.slug}','restart')">Restart</button>
+              <button onclick="act('${p.slug}','stop')">Stop</button>
               <button onclick="act('${p.slug}','resume')">Resume</button>
               <button onclick="openContinue('${p.slug}')">+ Continue</button>
+              <button onclick="viewDb('${p.slug}')">DB</button>
               <button onclick="openMeta('${p.slug}')">Env &amp; Rules</button>
               <button onclick="viewLogs('${p.slug}')">Logs</button>
               <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/architecture.html','_blank')">Flow/Docs</button>
@@ -229,6 +305,7 @@
       return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
+    loadAiConfig();
     loadData();
     setInterval(loadData, 15000);
 

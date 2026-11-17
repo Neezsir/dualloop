@@ -8,9 +8,11 @@ import {
   deleteProject,
   getDiskFreeSummary,
   gitRollback,
+  inspectProjectDbData,
   readProjectEnvMasked,
   runCmd,
   startOrReloadPm2,
+  stopProjectPm2,
   updateProjectEnv
 } from './runner.js';
 
@@ -62,10 +64,23 @@ export function startDashboard({
   subscribeFeed,
   onNewProject,
   onContinueProject,
-  onResumeProject
+  onResumeProject,
+  onToggleWatchdogMute = () => {}
 }) {
   const srv = http.createServer(async (req, res) => {
     const urlPath = (req.url || '/').split('?')[0];
+
+    if (config.dashboardPassword && urlPath !== '/api/webhook') {
+      const hdr = String(req.headers.authorization || '');
+      const decoded = hdr.startsWith('Basic ')
+        ? Buffer.from(hdr.slice(6), 'base64').toString('utf8')
+        : '';
+      const pass = decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : decoded;
+      if (pass !== config.dashboardPassword) {
+        res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="DualLoop Dashboard"' });
+        return res.end('Authentication required');
+      }
+    }
 
     try {
       if (req.method === 'GET' && urlPath === '/') {
@@ -194,16 +209,50 @@ export function startDashboard({
         return res.end(text);
       }
 
+      if (req.method === 'GET' && urlPath === '/api/ai-config') {
+        return json(res, 200, {
+          backendProvider: config.backendProvider,
+          backendModel: config.backendModel,
+          frontendProvider: config.frontendProvider,
+          frontendModel: config.frontendModel,
+          autoFallback: config.autoFallback
+        });
+      }
+
+      if (req.method === 'POST' && urlPath === '/api/ai-config') {
+        const body = await readBody(req);
+        if (body.backendProvider) config.backendProvider = String(body.backendProvider).trim();
+        if (body.backendModel) config.backendModel = String(body.backendModel).trim();
+        if (body.frontendProvider) config.frontendProvider = String(body.frontendProvider).trim();
+        if (body.frontendModel) config.frontendModel = String(body.frontendModel).trim();
+        if (typeof body.autoFallback === 'boolean') config.autoFallback = body.autoFallback;
+        return json(res, 200, { ok: true });
+      }
+
+      if (req.method === 'GET' && urlPath.startsWith('/api/db/')) {
+        const slug = decodeURIComponent(urlPath.slice('/api/db/'.length)).replace(/[^a-zA-Z0-9ก-๙_-]/g, '');
+        const dir = path.join(config.workspacesDir, slug);
+        if (!loadState(dir)) return json(res, 404, { error: 'Not found' });
+        const dbData = await inspectProjectDbData(dir);
+        return json(res, 200, dbData);
+      }
+
       if (req.method === 'POST' && urlPath === '/api/action') {
         const { slug, action } = await readBody(req);
         const dir = path.join(config.workspacesDir, String(slug || ''));
         const state = loadState(dir);
         if (!state) return json(res, 404, { error: 'Project not found' });
-        if (action === 'restart') startOrReloadPm2(dir, state);
-        else if (action === 'rollback') gitRollback(dir, state.lastCheckpoint);
+        if (action === 'restart') {
+          onToggleWatchdogMute(state.slug, false);
+          startOrReloadPm2(dir, state);
+        } else if (action === 'stop') {
+          onToggleWatchdogMute(state.slug, true);
+          stopProjectPm2(dir, state);
+        } else if (action === 'rollback') gitRollback(dir, state.lastCheckpoint);
         else if (action === 'delete') deleteProject(dir, state);
         else if (action === 'resume') onResumeProject(dir, state);
         else return json(res, 400, { error: 'Unknown action' });
+        srv._pm2Cache = null;
         return json(res, 200, { ok: true });
       }
 

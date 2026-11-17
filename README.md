@@ -28,6 +28,7 @@ pm2 start ecosystem.config.cjs
 - `/new --tpl <tpl> <name> | <concept>` & `/templates` — Start fast from presets
 - `/continue <slug> | <instruction>` — Add features with DB migration guard
 - `/resume <slug>` — Resume paused/interrupted project
+- `/app <start|stop> <slug>` — Start or stop a specific project without deleting it
 - `/cancel` — Cancel active task and clear queue
 - `/questions` — Answer queued blocked decisions
 - `/status` — Show project states, job queue & PM2 status

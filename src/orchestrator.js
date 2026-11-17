@@ -28,6 +28,7 @@ import {
   runCmd,
   snapshotDbs,
   startOrReloadPm2,
+  stopProjectPm2,
   updateProjectEnv,
   verifyProject
 } from './runner.js';
@@ -528,6 +529,7 @@ async function startDaemon() {
             '/templates — ดูรายการ Template',
             '/continue <slug> | <คำสั่งเพิ่มเติม> — ทำต่อจากโปรเจกต์เดิม',
             '/resume <slug> — ทำต่อจากงานที่ค้าง/ยกเลิกไว้',
+            '/app <start|stop> <slug> — เปิดหรือหยุดโปรเจกต์รายตัว',
             '/cancel — ยกเลิกงานที่กำลังทำและล้างคิว',
             '/questions — ตอบคำถามที่ข้ามไว้',
             '/status — สถานะโปรเจกต์ + คิว + PM2',
@@ -776,6 +778,23 @@ async function startDaemon() {
         return;
       }
 
+      if (text.startsWith('/app ')) {
+        const [, action, slug] = text.trim().split(/\s+/);
+        const dir = path.join(config.workspacesDir, slug || '');
+        const state = loadState(dir);
+        if (!state || (action !== 'stop' && action !== 'start')) {
+          return notify('ใช้: /app <start|stop> <slug>');
+        }
+        if (action === 'stop') {
+          mutedWatchdogs.add(state.slug);
+          const r = stopProjectPm2(dir, state);
+          return notify(r.ok ? `⏹️ หยุด ${state.pm2Name} แล้ว` : r.output);
+        }
+        mutedWatchdogs.delete(state.slug);
+        const r = startOrReloadPm2(dir, state);
+        return notify(r.ok ? `▶️ เปิด ${state.pm2Name} บน Port ${state.port} แล้ว` : r.output);
+      }
+
       if (text.startsWith('/resume')) {
         const slug = text.replace('/resume', '').trim();
         const dir = path.join(config.workspacesDir, slug);
@@ -901,6 +920,10 @@ async function startDaemon() {
       saveState(dir, state);
       jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
       processQueue();
+    },
+    onToggleWatchdogMute: (slug, mute) => {
+      if (mute) mutedWatchdogs.add(slug);
+      else mutedWatchdogs.delete(slug);
     }
   });
 

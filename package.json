@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/orchestrator.js",
+    "test": "node --test test/dualloop.test.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop dualloop",
     "pm2:logs": "pm2 logs dualloop"
