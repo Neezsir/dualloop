@@ -12,6 +12,15 @@ function ponytailDirective(level) {
   ].join('\n');
 }
 
+const RELATIONAL_DB_RULES = [
+  'RELATIONAL DATABASE RULES (STRICT):',
+  '- Proper 3NF relational schema: every table MUST have an explicit PRIMARY KEY.',
+  '- Enforce relationships with FOREIGN KEY (...) REFERENCES ... ON DELETE CASCADE/RESTRICT.',
+  '- For SQLite: always execute PRAGMA foreign_keys = ON; on every DB connection.',
+  '- Add NOT NULL, UNIQUE, CHECK constraints and CREATE INDEX on all foreign key & lookup columns.',
+  '- Never store relational arrays/lists as comma-separated strings or unvalidated JSON blobs when a join/child table belongs.'
+].join('\n');
+
 /**
  * Extract the first JSON object from an LLM response (fenced or raw).
  */
@@ -195,8 +204,9 @@ async function callRole(role, prompt, system, config) {
  */
 export async function clarifyStep(state, config) {
   const system = `${ponytailDirective(config.ponytailLevel)}
+${RELATIONAL_DB_RULES}
 You are the System Architect running a strict choice-only grill-me interview.
-Ask ONLY concise questions with 2-4 clickable options (in the user's language) until Tech Stack, DB, Core Flow, and UI style are clear.
+Ask ONLY concise questions with 2-4 clickable options (in the user's language) until Tech Stack, Relational DB tables/FKs, Core Flow, and UI style are clear.
 Limit to at most 4 questions total before finalizing.`;
 
   const prompt = `
@@ -219,10 +229,11 @@ Form B (ready to build):
   "done": true,
   "spec": {
     "summary": "Short SPEC markdown",
-    "dbSchema": "-- SQL schema or JSON schema",
+    "dbSchema": "-- 3NF relational SQL schema with PKs, FKs, ON DELETE, NOT NULL, CHECK, and indexes",
     "apiContract": { "baseUrl": "http://127.0.0.1:${state.port}", "endpoints": [] },
     "pm2Entry": "server.js",
     "testCommand": "node test.js",
+    "e2eCommand": "",
     "tasks": [
       { "id": "db-backend", "role": "backend", "title": "Build DB, backend API & tests", "detail": "..." },
       { "id": "frontend-ui", "role": "frontend", "title": "Build HTML/CSS/JS frontend matching API_CONTRACT.json", "detail": "..." }
@@ -240,8 +251,15 @@ Form B (ready to build):
 export async function executeTask({ task, state, context, errorLog, config }) {
   const isFrontend = task.role === 'frontend' || task.role === 'gemini';
   const roleDesc = isFrontend
-    ? 'You are the Frontend Engineer. Build clean, responsive HTML/CSS/JS UI strictly matching API_CONTRACT.json and served by the backend or static dir.'
-    : 'You are the Backend/DB/Process/Test Engineer. Build Node.js/Python backend, DB setup, process entrypoint listening on process.env.PORT, and an automated smoke/API test script.';
+    ? [
+        'You are the Frontend Engineer. Build clean, responsive HTML/CSS/JS UI strictly matching API_CONTRACT.json and served by the backend or static dir.',
+        'Ensure zero runtime JS exceptions, zero console.error logs, graceful error handling on failed fetches, and real interactive DOM rendering.'
+      ].join('\n')
+    : [
+        'You are the Backend/DB/Process/Test Engineer. Build Node.js/Python backend, strict relational DB setup, process entrypoint listening on process.env.PORT, and an automated full-stack test script (test.js).',
+        RELATIONAL_DB_RULES,
+        'Your testCommand (e.g. node test.js) MUST start cleanly against the live server or isolated test DB and verify: (1) DB schema & Foreign Key constraint rejection, (2) API CRUD round-trips matching API_CONTRACT.json, and (3) invalid-input 4xx validation.'
+      ].join('\n');
 
   const system = `${ponytailDirective(config.ponytailLevel)}
 ${roleDesc}
@@ -263,6 +281,7 @@ Return JSON ONLY:
   "setupCommands": ["npm install ... (only if strictly needed)"],
   "pm2Entry": "server.js",
   "testCommand": "node test.js",
+  "e2eCommand": "",
   "blockQuestion": {
     "question": "Short decision?",
     "options": ["Option A", "Option B"],

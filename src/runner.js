@@ -1,6 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { listProjects } from './state.js';
 
 /**
@@ -103,32 +104,215 @@ export function startOrReloadPm2(dir, state) {
   return runCmd(`pm2 startOrRestart "${ecoPath}" --update-env`, dir);
 }
 
+function findBrowserBinary() {
+  const candidates =
+    process.platform === 'win32'
+      ? [
+          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+          'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+          'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+          'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+        ]
+      : process.platform === 'darwin'
+        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge']
+        : ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/microsoft-edge'];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 /**
- * Verify PM2 process status, HTTP reachability, and test command.
+ * Headless browser E2E smoke probe using Chrome DevTools Protocol & Node native WebSocket.
+ */
+async function probeFrontendBrowser(url) {
+  const bin = findBrowserBinary();
+  if (!bin || typeof WebSocket !== 'function') return { skipped: true, ok: true };
+
+  const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dualloop-cdp-'));
+  const proc = spawn(
+    bin,
+    ['--headless=new', '--disable-gpu', '--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${userDir}`, 'about:blank'],
+    { stdio: ['ignore', 'ignore', 'pipe'] }
+  );
+
+  let ws;
+  try {
+    const debugPort = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Browser launch timeout')), 8000);
+      let buf = '';
+      proc.stderr.on('data', (chunk) => {
+        buf += chunk.toString();
+        const m = buf.match(/ws:\/\/127\.0\.0\.1:(\d+)\//);
+        if (m) {
+          clearTimeout(timer);
+          resolve(Number(m[1]));
+        }
+      });
+      proc.on('exit', (code) => {
+        clearTimeout(timer);
+        reject(new Error(`Browser exited (${code})`));
+      });
+    });
+
+    const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
+    const page = targets.find((t) => t.type === 'page') || targets[0];
+    if (!page?.webSocketDebuggerUrl) throw new Error('No CDP page target');
+
+    ws = new WebSocket(page.webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => {
+      ws.addEventListener('open', resolve, { once: true });
+      ws.addEventListener('error', () => reject(new Error('CDP WebSocket failed')), { once: true });
+    });
+
+    let seq = 0;
+    const pending = new Map();
+    const errors = [];
+    let loadedResolve;
+    const loaded = new Promise((r) => {
+      loadedResolve = r;
+    });
+
+    ws.addEventListener('message', (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.id && pending.has(msg.id)) {
+        const { resolve, reject } = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.error) reject(new Error(msg.error.message));
+        else resolve(msg.result);
+        return;
+      }
+      if (msg.method === 'Page.loadEventFired') loadedResolve();
+      if (msg.method === 'Runtime.exceptionThrown') {
+        const d = msg.params.exceptionDetails;
+        errors.push(`JS Exception: ${d.exception?.description || d.text}`);
+      }
+      if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') {
+        const txt = msg.params.args?.map((a) => a.value || a.description || '').join(' ');
+        if (txt) errors.push(`Console Error: ${txt}`);
+      }
+      if (msg.method === 'Network.responseReceived' && msg.params.response?.status >= 400) {
+        errors.push(`HTTP ${msg.params.response.status}: ${msg.params.response.url}`);
+      }
+    });
+
+    const send = (method, params = {}) =>
+      new Promise((resolve, reject) => {
+        const id = ++seq;
+        pending.set(id, { resolve, reject });
+        ws.send(JSON.stringify({ id, method, params }));
+      });
+
+    await send('Page.enable');
+    await send('Runtime.enable');
+    await send('Network.enable');
+    await send('Page.navigate', { url });
+    await Promise.race([loaded, new Promise((r) => setTimeout(r, 6000))]);
+    await new Promise((r) => setTimeout(r, 800));
+
+    const domCheck = await send('Runtime.evaluate', {
+      expression: '({ textLen: document.body ? document.body.innerText.trim().length : 0, nodes: document.querySelectorAll("*").length })',
+      returnByValue: true
+    });
+    const val = domCheck.result?.value || { textLen: 0, nodes: 0 };
+    if (val.textLen === 0 && val.nodes < 4) {
+      errors.push('Blank UI rendered (empty DOM)');
+    }
+
+    return errors.length ? { ok: false, error: errors.slice(0, 6).join('\n') } : { ok: true };
+  } catch {
+    return { skipped: true, ok: true };
+  } finally {
+    try { ws?.close(); } catch {}
+    try { proc.kill('SIGKILL'); } catch {}
+    try { fs.rmSync(userDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+/**
+ * Verify all 4 layers: PM2 runtime, DB/API tests, API contract endpoints, and Frontend DOM/JS/Network.
  */
 export async function verifyProject(dir, state) {
+  // 1. PM2 Runtime check
   const pm2Res = startOrReloadPm2(dir, state);
   if (!pm2Res.ok) {
-    return { ok: false, error: `PM2 failed:\n${pm2Res.output}` };
+    return { ok: false, layer: 'backend', error: `PM2 start failed:\n${pm2Res.output}` };
   }
-
-  // Brief wait for server bind before health/test run
   await new Promise((r) => setTimeout(r, 1500));
 
+  const jlist = runCmd('pm2 jlist', dir);
+  if (jlist.ok) {
+    try {
+      const list = JSON.parse(jlist.output);
+      const app = list.find((a) => a.name === state.pm2Name);
+      if (app && app.pm2_env?.status !== 'online') {
+        const logs = runCmd(`pm2 logs ${state.pm2Name} --err --lines 20 --nostream --no-color`, dir);
+        return { ok: false, layer: 'backend', error: `PM2 ${state.pm2Name} status=${app.pm2_env?.status}\n${logs.output}` };
+      }
+    } catch {}
+  }
+
+  // 2. DB & Backend API test suite
   if (state.testCommand) {
     const testRes = runCmd(state.testCommand, dir, 90000);
     if (!testRes.ok) {
-      return { ok: false, error: `Test failed (${state.testCommand}):\n${testRes.output}` };
+      return { ok: false, layer: 'backend', error: `DB/API test failed (${state.testCommand}):\n${testRes.output}` };
     }
   }
 
+  // 3. HTTP root & API_CONTRACT static GET probe
+  const baseUrl = `http://127.0.0.1:${state.port}`;
+  let html = '';
   try {
-    const res = await fetch(`http://127.0.0.1:${state.port}/`);
-    if (res.status >= 500) {
-      return { ok: false, error: `HTTP ${res.status} on port ${state.port}` };
+    const res = await fetch(`${baseUrl}/`);
+    if (res.status >= 400) {
+      return { ok: false, layer: 'frontend', error: `HTTP ${res.status} on ${baseUrl}/` };
     }
+    html = await res.text();
   } catch (err) {
-    return { ok: false, error: `Server unreachable on port ${state.port}: ${err.message}` };
+    return { ok: false, layer: 'backend', error: `Server unreachable on port ${state.port}: ${err.message}` };
+  }
+
+  const contractPath = path.join(dir, 'API_CONTRACT.json');
+  if (fs.existsSync(contractPath)) {
+    try {
+      const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+      for (const ep of contract.endpoints || []) {
+        const method = String(ep.method || 'GET').toUpperCase();
+        const epPath = typeof ep === 'string' ? ep : ep.path;
+        if (method === 'GET' && epPath && !epPath.includes(':') && !epPath.includes('{')) {
+          const r = await fetch(`${baseUrl}${epPath.startsWith('/') ? epPath : `/${epPath}`}`);
+          if (r.status >= 500) {
+            return { ok: false, layer: 'backend', error: `API GET ${epPath} returned HTTP ${r.status}` };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Check local <script src> / <link href> assets resolve cleanly
+  const assetMatches = [...html.matchAll(/(?:src|href)=["'](\/[^"']+)["']/gi)].map((m) => m[1]);
+  for (const asset of assetMatches.slice(0, 15)) {
+    try {
+      const r = await fetch(`${baseUrl}${asset}`);
+      if (r.status >= 400) {
+        return { ok: false, layer: 'frontend', error: `Missing frontend asset ${asset} (HTTP ${r.status})` };
+      }
+    } catch {}
+  }
+
+  // 4. Frontend E2E & Real Headless Browser Probe (JS exceptions, console.error, failed fetch)
+  if (state.e2eCommand) {
+    const e2eRes = runCmd(state.e2eCommand, dir, 90000);
+    if (!e2eRes.ok) {
+      return { ok: false, layer: 'frontend', error: `Frontend E2E failed (${state.e2eCommand}):\n${e2eRes.output}` };
+    }
+  }
+
+  const browserCheck = await probeFrontendBrowser(`${baseUrl}/`);
+  if (!browserCheck.ok) {
+    return { ok: false, layer: 'frontend', error: `Browser probe failed:\n${browserCheck.error}` };
   }
 
   return { ok: true };

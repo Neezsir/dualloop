@@ -49,6 +49,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 
       state.pm2Entry = spec.pm2Entry || 'server.js';
       state.testCommand = spec.testCommand || '';
+      state.e2eCommand = spec.e2eCommand || '';
       state.tasks = (spec.tasks || []).map((t) => ({ ...t, status: 'pending' }));
       state.phase = 'build';
       appendHistory(state, 'Spec & contracts locked');
@@ -90,6 +91,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
         }
         if (res.pm2Entry) state.pm2Entry = res.pm2Entry;
         if (res.testCommand) state.testCommand = res.testCommand;
+        if (res.e2eCommand) state.e2eCommand = res.e2eCommand;
 
         // Schema Guard: if contract/DB changed, re-sync opposite track once
         const touchedContract = (res.files || []).some((f) =>
@@ -158,7 +160,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
       saveState(dir, state);
       await notify(`[${state.name}] พบ Error -> แก้บั๊กรอบที่ ${state.fixLoops}/${config.maxFixLoops}`);
 
-      const targetRole = /html|css|frontend|ui/i.test(check.error) ? 'gemini' : 'claude';
+      const targetRole = check.layer === 'frontend' ? 'frontend' : 'backend';
       const fixTask = {
         id: `fix-${state.fixLoops}`,
         role: targetRole,
