@@ -35,6 +35,7 @@ export function runCmd(command, cwd, timeoutMs = 60000) {
       cwd,
       encoding: 'utf8',
       timeout: timeoutMs,
+      windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
     return { ok: true, output: tail(stdout, 2500) };
@@ -199,7 +200,7 @@ export function updateProjectEnv(dir, state, key, value) {
 export function openTunnel(port) {
   const trySpawn = (bin, args, urlRegex) =>
     new Promise((resolve, reject) => {
-      const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' });
+      const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: process.platform === 'win32' });
       const timer = setTimeout(() => {
         try { proc.kill(); } catch {}
         reject(new Error(`${bin} timeout`));
@@ -410,7 +411,7 @@ async function probeFrontendBrowser(url, screenshotPath) {
   const proc = spawn(
     bin,
     ['--headless=new', '--disable-gpu', '--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${userDir}`, 'about:blank'],
-    { stdio: ['ignore', 'ignore', 'pipe'] }
+    { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true }
   );
 
   let ws;

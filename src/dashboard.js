@@ -102,9 +102,14 @@ export function startDashboard({
       }
 
       if (req.method === 'GET' && urlPath === '/api/projects') {
-        const jlist = runCmd('pm2 jlist', process.cwd());
-        let pm2Apps = [];
-        try { if (jlist.ok) pm2Apps = JSON.parse(jlist.output); } catch {}
+        const now = Date.now();
+        if (!srv._pm2Cache || now - srv._pm2Cache.ts > 4000) {
+          const jlist = runCmd('pm2 jlist', process.cwd());
+          let apps = [];
+          try { if (jlist.ok) apps = JSON.parse(jlist.output); } catch {}
+          srv._pm2Cache = { ts: now, apps };
+        }
+        const pm2Apps = srv._pm2Cache.apps;
         const projects = listProjects(config.workspacesDir).map(({ state }) => {
           const app = pm2Apps.find((a) => a.name === state.pm2Name);
           const previewFile = path.join(os.tmpdir(), `dualloop-preview-${state.slug}.png`);

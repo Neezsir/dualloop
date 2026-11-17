@@ -331,6 +331,7 @@ export function generateProjectDocs(dir, state, verifyReport = null) {
       const fileUrl = `file:///${svgPath.replace(/\\/g, '/')}`;
       execSync(`"${bin}" --headless=new --disable-gpu --screenshot="${pngPath}" --window-size=1120,520 "${fileUrl}"`, {
         stdio: 'ignore',
+        windowsHide: true,
         timeout: 12000
       });
     } catch {}

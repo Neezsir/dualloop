@@ -50,6 +50,7 @@ function runCli(bin, args, promptText, timeoutMs = 180000) {
     input: promptText,
     encoding: 'utf8',
     timeout: timeoutMs,
+    windowsHide: true,
     shell: process.platform === 'win32',
     maxBuffer: 10 * 1024 * 1024
   });
