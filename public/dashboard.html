@@ -141,15 +141,15 @@
           <span id="titleAi">🤖 ตั้งค่า Dual-AI Engine</span>
           <label class="pill-status" style="cursor:pointer;"><input type="checkbox" id="autoFb" style="min-width:auto;margin:0;" /> Auto-Fallback</label>
         </div>
-        <div class="field-grid">
-          <span class="k-lbl">Backend</span>
-          <select id="beProv" onchange="syncModels('be')"><option>claude-cli</option><option>agy</option><option>gemini-cli</option><option>codex-cli</option><option>anthropic</option><option>gemini</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+        <div class="field-grid" style="grid-template-columns:108px 1fr 1fr;">
+          <span class="k-lbl" style="display:flex;align-items:center;gap:6px;"><span id="beIcon" style="display:inline-flex;align-items:center;"></span>Backend</span>
+          <select id="beProv" onchange="syncModels('be')"><option value="claude-cli">🟠 claude-cli</option><option value="agy">✨ agy</option><option value="gemini-cli">🔷 gemini-cli</option><option value="codex-cli">⚡ codex-cli</option><option value="anthropic">🟠 anthropic</option><option value="gemini">🔷 gemini</option><option value="openai">🤖 openai</option><option value="openrouter">🌐 openrouter</option><option value="ollama">🦙 ollama</option><option value="custom">🛠️ custom</option></select>
           <select id="beModelSel" onchange="onModelPick('be')"></select>
         </div>
         <input id="beModelCustom" placeholder="Backend Custom Model ID" style="display:none;" />
-        <div class="field-grid">
-          <span class="k-lbl">Frontend</span>
-          <select id="feProv" onchange="syncModels('fe')"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>codex-cli</option><option>anthropic</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+        <div class="field-grid" style="grid-template-columns:108px 1fr 1fr;">
+          <span class="k-lbl" style="display:flex;align-items:center;gap:6px;"><span id="feIcon" style="display:inline-flex;align-items:center;"></span>Frontend</span>
+          <select id="feProv" onchange="syncModels('fe')"><option value="agy">✨ agy</option><option value="gemini-cli">🔷 gemini-cli</option><option value="gemini">🔷 gemini</option><option value="claude-cli">🟠 claude-cli</option><option value="codex-cli">⚡ codex-cli</option><option value="anthropic">🟠 anthropic</option><option value="openai">🤖 openai</option><option value="openrouter">🌐 openrouter</option><option value="ollama">🦙 ollama</option><option value="custom">🛠️ custom</option></select>
           <select id="feModelSel" onchange="onModelPick('fe')"></select>
         </div>
         <input id="feModelCustom" placeholder="Frontend Custom Model ID" style="display:none;" />
@@ -363,8 +363,21 @@
     }
     function closeModal() { document.getElementById('modalBg').style.display = 'none'; }
 
+    const PROV_BADGE = {
+      'claude-cli': ['#d97757', 'C'], 'anthropic': ['#d97757', 'A'],
+      'agy': ['#4f46e5', '★'], 'gemini-cli': ['#2563eb', '✦'], 'gemini': ['#2563eb', '✦'],
+      'codex-cli': ['#10a37f', '⚡'], 'openai': ['#10a37f', '◎'],
+      'openrouter': ['#7c3aed', '⇄'], 'ollama': ['#0f172a', '🦙'], 'custom': ['#64748b', '⚙']
+    };
+    function renderProvIcon(side, prov) {
+      const el = document.getElementById(side + 'Icon');
+      if (!el) return;
+      const [bg, sym] = PROV_BADGE[prov] || ['#64748b', '?'];
+      el.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect width="18" height="18" rx="5" fill="${bg}"/><text x="9" y="12.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${sym}</text></svg>`;
+    }
     function syncModels(side, preferredVal) {
       const prov = document.getElementById(side + 'Prov').value;
+      renderProvIcon(side, prov);
       const sel = document.getElementById(side + 'ModelSel');
       const customInp = document.getElementById(side + 'ModelCustom');
       const list = MODEL_PRESETS[prov] || [];
