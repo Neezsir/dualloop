@@ -54,6 +54,6 @@ Build complete software in tight, low-token loops: clarify via clickable choices
    - If still failing: stop, keep last working Git checkpoint available for rollback, and ask user via concise choice options (`Retry`, `Rollback`, `Skip`).
 
 6. **Deliver & Continue:**
-   - Generate per-project architecture docs inside `<project>/docs/`: `TECHSTACK.txt`, `FLOW_DIAGRAM.md` (Mermaid), `diagram.svg`/`diagram.png`, and `architecture.html`.
+   - Generate per-project architecture docs inside `<project>/docs/`: `TECHSTACK.txt`, `FLOW_DIAGRAM.md` (Mermaid), `diagram.svg`/`diagram.png`, `architecture.html`, and `api-tester.html`.
    - Present final PM2 status, URL/port, docs path, and any remaining `blockedQuestions`.
    - Future requests read `STATE.json` and append new tasks into the same loop (updating `docs/`).

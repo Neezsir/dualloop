@@ -48,6 +48,7 @@ pm2 start ecosystem.config.cjs
 *(Tip: You can also send a UI sketch photo or voice note directly in Telegram to start a project!)*
 
 Run `node bin/cli.js doctor` to verify Node, PM2, Git, AI providers, Headless Browser & Telegram.
+Web Control Dashboard + Live Activity Feed runs on `http://127.0.0.1:4099` (`POST /api/webhook` supported when `WEBHOOK_SECRET` is set).
 
 ## CLI Mode
 

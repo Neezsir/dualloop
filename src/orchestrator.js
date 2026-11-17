@@ -275,7 +275,7 @@ export async function runProjectLoop({
           `PM2: ${state.pm2Name} (online)\n` +
           `🔗 URL: ${previewUrls(state.port, config)}\n` +
           `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}\n` +
-          `📐 Docs: docs/architecture.html · diagram.svg/png · FLOW_DIAGRAM.md · TECHSTACK.txt` +
+          `📐 Docs: docs/architecture.html · api-tester.html · diagram.svg/png · FLOW_DIAGRAM.md · TECHSTACK.txt` +
           (pushed.pushed ? `\n🐙 Git: auto-pushed origin` : '') +
           `\n📂 Path: ${dir}` +
           (state.blockedQuestions.length
@@ -428,7 +428,19 @@ async function startDaemon() {
     }
   };
 
-  const notify = (m) => bot.send(m);
+  const activityFeed = [];
+  const feedSubscribers = new Set();
+  const pushFeed = (msg) => {
+    const item = { ts: new Date().toISOString(), msg: String(msg) };
+    activityFeed.push(item);
+    if (activityFeed.length > 50) activityFeed.shift();
+    for (const fn of feedSubscribers) fn(item);
+  };
+
+  const notify = (m) => {
+    pushFeed(m);
+    return bot.send(m);
+  };
   const sendPhoto = (p, c) => bot.sendPhoto(p, c);
   const askChoice = (q, opts, multi, extra) => bot.askChoice(q, opts, multi, extra);
   const loopCtx = (dir, state) => ({
@@ -809,10 +821,23 @@ async function startDaemon() {
   startDashboard({
     config,
     getQueueInfo: () => ({ queueSize: jobQueue.length, running }),
+    getActivityFeed: () => activityFeed,
+    subscribeFeed: (fn) => {
+      feedSubscribers.add(fn);
+      return () => feedSubscribers.delete(fn);
+    },
     onNewProject: async (name, concept) => {
       const port = await allocatePort(config.workspacesDir, config.basePort);
       const { dir, state } = createProjectState(config.workspacesDir, name, concept, port);
       jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+      processQueue();
+      return { dir, state };
+    },
+    onContinueProject: (slug, instruction) => {
+      const dir = path.join(config.workspacesDir, slug);
+      const state = loadState(dir);
+      if (!state) return null;
+      jobQueue.push(() => continueProject({ ...loopCtx(dir, state), instruction }));
       processQueue();
       return { dir, state };
     },

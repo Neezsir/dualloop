@@ -161,11 +161,15 @@ export function generateProjectDocs(dir, state) {
     .card { background:#131b31; border:1px solid #243258; border-radius:12px; padding:16px; margin-bottom:16px; }
     pre { background:#070b14; padding:12px; border-radius:8px; overflow:auto; font-size:12px; color:#cbd5e1; white-space:pre-wrap; }
     img { max-width:100%; height:auto; border-radius:8px; }
+    a.btn { display:inline-block; background:#0284c7; color:#fff; padding:7px 12px; border-radius:8px; text-decoration:none; font-size:13px; font-weight:600; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>⚡ ${esc(state.name)} — Flow &amp; Techstack</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h1>⚡ ${esc(state.name)} — Flow &amp; Techstack</h1>
+      <a class="btn" href="./api-tester.html">🧪 Open Interactive API Tester ↗</a>
+    </div>
     <p style="color:#94a3b8;">${esc(state.concept)}</p>
     <div class="card"><h3>System Diagram</h3><img src="./diagram.svg" alt="diagram"/></div>
     <div class="card"><h3>Techstack &amp; Contract Summary</h3><pre>${esc(techTxt)}</pre></div>
@@ -173,6 +177,102 @@ export function generateProjectDocs(dir, state) {
 </body>
 </html>`;
   fs.writeFileSync(path.join(docsDir, 'architecture.html'), html, 'utf8');
+
+  // 5. Interactive API Tester (api-tester.html)
+  const rawEndpoints = (contract?.endpoints || []).map((ep) =>
+    typeof ep === 'string'
+      ? { method: 'GET', path: ep, body: '' }
+      : {
+          method: String(ep.method || 'GET').toUpperCase(),
+          path: ep.path || '/',
+          body: ep.request || ep.body ? JSON.stringify(ep.request || ep.body, null, 2) : ''
+        }
+  );
+  if (!rawEndpoints.length) rawEndpoints.push({ method: 'GET', path: '/', body: '' });
+
+  const testerHtml = `<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>${esc(state.name)} — API Tester</title>
+  <style>
+    body { margin:0; font-family:system-ui,sans-serif; background:#0b1020; color:#e7edf8; padding:24px; }
+    .wrap { max-width:960px; margin:0 auto; }
+    .card { background:#131b31; border:1px solid #243258; border-radius:12px; padding:16px; margin-bottom:16px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    input, select, textarea, button { background:#070b14; color:#e7edf8; border:1px solid #243258; border-radius:8px; padding:8px 10px; font-size:13px; }
+    button { background:#0284c7; border-color:#0284c7; font-weight:600; cursor:pointer; }
+    button.ep { background:#1c294a; border-color:#2c3e6b; text-align:left; }
+    textarea { width:100%; min-height:110px; font-family:Consolas,monospace; }
+    pre { background:#070b14; border:1px solid #243258; border-radius:8px; padding:12px; overflow:auto; max-height:360px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🧪 ${esc(state.name)} — Interactive API Tester</h1>
+    <div class="card">
+      <div class="row" id="epList"></div>
+      <div class="row">
+        <input id="baseUrl" value="http://127.0.0.1:${state.port}" style="flex:1;min-width:200px;" />
+        <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+        <input id="epPath" value="${esc(rawEndpoints[0].path)}" style="flex:2;min-width:220px;" />
+        <button onclick="sendReq()">Send</button>
+      </div>
+      <textarea id="reqBody" placeholder="JSON body (optional)"></textarea>
+    </div>
+    <div class="card">
+      <div id="respMeta" style="color:#94a3b8;font-size:13px;margin-bottom:8px;">Ready</div>
+      <pre id="respOut"></pre>
+    </div>
+  </div>
+  <script>
+    const ENDPOINTS = ${JSON.stringify(rawEndpoints)};
+    document.getElementById('epList').innerHTML = ENDPOINTS.map((e, i) =>
+      '<button class="ep" onclick="pick(' + i + ')">' + e.method + ' ' + e.path + '</button>'
+    ).join('');
+    function pick(i) {
+      const e = ENDPOINTS[i];
+      document.getElementById('method').value = e.method;
+      document.getElementById('epPath').value = e.path;
+      document.getElementById('reqBody').value = e.body || '';
+    }
+    async function sendReq() {
+      const base = document.getElementById('baseUrl').value.replace(/\\/+$/, '');
+      const method = document.getElementById('method').value;
+      const p = document.getElementById('epPath').value;
+      const body = document.getElementById('reqBody').value.trim();
+      const targetUrl = base + (p.startsWith('/') ? p : '/' + p);
+      const t0 = performance.now();
+      let statusText = '';
+      let text = '';
+      try {
+        const useProxy = location.port && location.port !== '${state.port}';
+        const res = useProxy
+          ? await fetch('/api/proxy', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ url: targetUrl, method, body: body || undefined })
+            })
+          : await fetch(targetUrl, {
+              method,
+              headers: body ? { 'content-type': 'application/json' } : {},
+              body: method !== 'GET' && method !== 'HEAD' && body ? body : undefined
+            });
+        statusText = 'HTTP ' + res.status;
+        text = await res.text();
+        try { text = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+      } catch (err) {
+        statusText = 'Error';
+        text = err.message;
+      }
+      document.getElementById('respMeta').textContent = statusText + ' · ' + Math.round(performance.now() - t0) + 'ms';
+      document.getElementById('respOut').textContent = text;
+    }
+  </script>
+</body>
+</html>`;
+  fs.writeFileSync(path.join(docsDir, 'api-tester.html'), testerHtml, 'utf8');
 
   // 5. Render diagram.png if Chrome/Edge binary exists
   const pngPath = path.join(docsDir, 'diagram.png');
