@@ -55,6 +55,30 @@ const TEMPLATES = {
   landing: [
     { question: 'Tech Stack?', answer: 'Node.js static + lead-capture SQLite API + Responsive HTML/CSS/JS' },
     { question: 'UI Theme?', answer: 'Modern SaaS / Mobile-First' }
+  ],
+  ecommerce: [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (products + cart + orders) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Modern SaaS / Mobile-First' }
+  ],
+  booking: [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (slots + bookings + status) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Clean Light Dashboard' }
+  ],
+  kanban: [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (boards + columns + tasks) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Clean Light Dashboard' }
+  ],
+  pos: [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (menu + receipts + daily summary) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Clean Light Dashboard' }
+  ],
+  helpdesk: [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (tickets + comments + priority) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Clean Light Dashboard' }
+  ],
+  'blog-cms': [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (posts + categories + admin editor) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Modern SaaS / Mobile-First' }
   ]
 };
 

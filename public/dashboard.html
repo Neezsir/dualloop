@@ -85,7 +85,9 @@
     th { background:var(--card2); font-weight:700; }
 
     .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; place-items:center; padding:16px; z-index:50; }
-    .modal { width:min(760px,100%); max-height:85vh; overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+    .modal { width:min(880px,100%); max-height:90vh; overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+    .tpl-stage { background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px; display:flex; justify-content:center; }
+    .tpl-frame { width:100%; height:310px; border:1px solid var(--line); border-radius:10px; background:#fff; transition:width .2s ease; }
     .toast { position:fixed; right:20px; bottom:20px; background:var(--text); color:var(--bg); padding:10px 15px; border-radius:10px; font-size:13px; font-weight:600; display:none; z-index:60; box-shadow:0 10px 25px rgba(0,0,0,.25); }
   </style>
 </head>
@@ -121,16 +123,22 @@
         <div class="card-title"><span id="titleNew">🚀 สร้างโปรเจกต์ใหม่</span></div>
         <div class="row">
           <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
-          <select id="tplSel" style="max-width:155px;" onchange="if(this.value)openTplPreview(this.value)">
+          <select id="tplSel" style="max-width:175px;" onchange="if(this.value)openTplPreview(this.value)">
             <option value="">Template: None</option>
-            <option value="crud-sqlite">crud-sqlite</option>
-            <option value="auth-app">auth-app</option>
-            <option value="dashboard">dashboard</option>
-            <option value="landing">landing</option>
+            <option value="crud-sqlite">📋 crud-sqlite</option>
+            <option value="auth-app">🔐 auth-app</option>
+            <option value="dashboard">📊 dashboard</option>
+            <option value="landing">🌐 landing</option>
+            <option value="ecommerce">🛒 ecommerce</option>
+            <option value="booking">📅 booking</option>
+            <option value="kanban">📌 kanban</option>
+            <option value="pos">🧾 pos</option>
+            <option value="helpdesk">🎫 helpdesk</option>
+            <option value="blog-cms">✍️ blog-cms</option>
           </select>
           <button type="button" id="btnTplPrev" class="sm" onclick="openTplPreview(document.getElementById('tplSel').value || 'crud-sqlite')">👁️ ตัวอย่าง</button>
         </div>
-        <textarea id="appConcept" placeholder="อธิบาย Concept, ฟีเจอร์, หรือ Tech Stack ที่ต้องการ..."></textarea>
+        <textarea id="appConcept" oninput="this.dataset.fromTpl='0'" placeholder="อธิบาย Concept, ฟีเจอร์, หรือ Tech Stack ที่ต้องการ..."></textarea>
         <div class="row" style="justify-content:flex-end;">
           <button id="btnCreate" class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
         </div>
@@ -213,57 +221,159 @@
 
     const TPL_EXAMPLES = {
       'crud-sqlite': {
-        th: { title: 'CRUD + SQLite (จัดการข้อมูล)', desc: 'ระบบเพิ่ม-แก้ไข-ลบข้อมูล เชื่อม SQLite 3NF + Foreign Key พร้อมค้นหาและ Seed ข้อมูลอัตโนมัติ', sample: 'ระบบจัดการสต็อกสินค้าและหมวดหมู่ พร้อมค้นหา แจ้งเตือนของใกล้หมด และ Export CSV' },
-        en: { title: 'CRUD + SQLite Manager', desc: 'Full Create/Read/Update/Delete app backed by 3NF SQLite with FKs, search, and auto-seeded rows.', sample: 'Inventory & category manager with search, low-stock alerts, and CSV export' },
-        stack: 'Node.js · Express · SQLite (3NF + FK) · Clean Light Dashboard',
-        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#f8fafc;">
-          <rect x="12" y="12" width="396" height="28" rx="6" fill="#2563eb"/><text x="24" y="30" fill="#fff" font-size="12" font-family="sans-serif" font-weight="700">CRUD Manager · Search &amp; Filter</text>
-          <rect x="12" y="48" width="260" height="24" rx="5" fill="#fff" stroke="#cbd5e1"/><rect x="280" y="48" width="128" height="24" rx="5" fill="#16a34a"/><text x="315" y="64" fill="#fff" font-size="11" font-family="sans-serif">+ Add Item</text>
-          <rect x="12" y="82" width="396" height="86" rx="6" fill="#fff" stroke="#cbd5e1"/>
-          <line x1="12" y1="106" x2="408" y2="106" stroke="#e2e8f0"/><line x1="12" y1="134" x2="408" y2="134" stroke="#e2e8f0"/>
-          <text x="24" y="98" fill="#64748b" font-size="10" font-family="sans-serif">ID · Name · Category (FK) · Stock · Actions</text>
-          <text x="24" y="124" fill="#0f172a" font-size="11" font-family="sans-serif">#1 · Item A · Electronics · 42 · [Edit] [Del]</text>
-          <text x="24" y="152" fill="#0f172a" font-size="11" font-family="sans-serif">#2 · Item B · Office · 15 · [Edit] [Del]</text>
-        </svg>`
+        icon: '📋',
+        th: { title: 'CRUD + SQLite (จัดการข้อมูล/สต็อก)', desc: 'ตารางเพิ่ม-แก้ไข-ลบข้อมูล เชื่อม SQLite 3NF + Foreign Key พร้อมช่องค้นหา ตัวกรองหมวดหมู่ และ Export CSV', sample: 'ระบบจัดการสต็อกสินค้าและหมวดหมู่ พร้อมค้นหา แจ้งเตือนของใกล้หมด และ Export CSV' },
+        en: { title: 'CRUD + SQLite Manager', desc: 'Full Create/Read/Update/Delete table backed by 3NF SQLite with FKs, search bar, and CSV export.', sample: 'Inventory & category manager with search, low-stock alerts, and CSV export' },
+        stack: 'Node.js · Express · SQLite (3NF + FK)',
+        body: `<header class="nav"><b>📦 StockManager</b><button class="btn">+ เพิ่มรายการใหม่</button></header>
+          <div class="pad"><div class="bar"><input placeholder="🔍 ค้นหาชื่อสินค้า / รหัส..." /><span class="pill">ทั้งหมด (128)</span><span class="pill warn">ใกล้หมด (4)</span></div>
+          <table><tr><th>สินค้า</th><th>หมวดหมู่</th><th>คงเหลือ</th><th>จัดการ</th></tr>
+          <tr><td><b>คีย์บอร์ดไร้สาย</b></td><td>อุปกรณ์คอม</td><td><span class="ok">42 ชิ้น</span></td><td><button class="sm">แก้ไข</button> <button class="sm red">ลบ</button></td></tr>
+          <tr><td><b>เมาส์สุขภาพ</b></td><td>อุปกรณ์คอม</td><td><span class="warn">3 ชิ้น</span></td><td><button class="sm">แก้ไข</button> <button class="sm red">ลบ</button></td></tr>
+          <tr><td><b>โต๊ะปรับระดับ</b></td><td>เฟอร์นิเจอร์</td><td><span class="ok">18 ชิ้น</span></td><td><button class="sm">แก้ไข</button> <button class="sm red">ลบ</button></td></tr></table></div>`
       },
       'auth-app': {
-        th: { title: 'Auth App (ระบบสมาชิก + สิทธิ์)', desc: 'ระบบสมัครสมาชิก ล็อกอิน Session/JWT แยก Role Admin/User พร้อมหน้าโปรไฟล์และ Route Guard', sample: 'ระบบจองห้องประชุมบริษัท มีล็อกอินพนักงาน แยกสิทธิ์ Admin อนุมัติการจอง' },
+        icon: '🔐',
+        th: { title: 'Auth App (ระบบสมาชิก + สิทธิ์ Role)', desc: 'หน้าสมัครสมาชิก ล็อกอิน Session/JWT เข้ารหัสรหัสผ่าน แยกสิทธิ์ Admin/User พร้อมหน้าโปรไฟล์', sample: 'ระบบจองห้องประชุมบริษัท มีล็อกอินพนักงาน แยกสิทธิ์ Admin อนุมัติการจอง' },
         en: { title: 'Auth + Role Guard App', desc: 'Register/Login with JWT/Session, hashed passwords, Admin/User role guards, and profile panel.', sample: 'Company meeting room booking system with staff login and Admin approval' },
-        stack: 'Node.js · SQLite (users + sessions + roles) · Modern SaaS Mobile-First',
-        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#f8fafc;">
-          <rect x="120" y="16" width="180" height="148" rx="10" fill="#fff" stroke="#cbd5e1"/>
-          <text x="165" y="42" fill="#0f172a" font-size="13" font-family="sans-serif" font-weight="700">🔐 Sign In</text>
-          <rect x="136" y="54" width="148" height="24" rx="5" fill="#f1f5f9" stroke="#cbd5e1"/><text x="144" y="70" fill="#64748b" font-size="10" font-family="sans-serif">email@company.com</text>
-          <rect x="136" y="86" width="148" height="24" rx="5" fill="#f1f5f9" stroke="#cbd5e1"/><text x="144" y="102" fill="#64748b" font-size="10" font-family="sans-serif">••••••••••</text>
-          <rect x="136" y="120" width="148" height="26" rx="6" fill="#2563eb"/><text x="182" y="137" fill="#fff" font-size="11" font-family="sans-serif" font-weight="700">Login (JWT)</text>
-        </svg>`
+        stack: 'Node.js · SQLite (users + sessions + roles)',
+        body: `<div class="center"><div class="card w320"><div style="text-align:center;margin-bottom:10px;"><div style="font-size:24px;">🔐</div><b>เข้าสู่ระบบสมาชิก</b><div class="sub">รองรับสิทธิ์ Admin / User</div></div>
+          <label>อีเมลผู้ใช้งาน</label><input value="admin@company.co.th" readonly />
+          <label>รหัสผ่าน</label><input type="password" value="••••••••••" readonly />
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin:6px 0 10px;"><span>☑ จำการเข้าสู่ระบบ</span><span class="link">สมัครสมาชิกใหม่</span></div>
+          <button class="btn full">เข้าสู่ระบบ (JWT Auth)</button></div></div>`
       },
       dashboard: {
-        th: { title: 'KPI & Chart Dashboard', desc: 'หน้าสรุปตัวเลข KPI, กราฟรายวัน/รายเดือน และตารางรายการล่าสุด รองรับ Dark/Light ธีม', sample: 'แดชบอร์ดสรุปยอดขายรายวัน รายได้ตามหมวดสินค้า และออเดอร์ล่าสุดแบบเรียลไทม์' },
-        en: { title: 'Analytics & KPI Dashboard', desc: 'KPI cards, trend charts, and live activity table backed by relational SQLite aggregations.', sample: 'Daily sales analytics dashboard with category breakdown and recent orders' },
-        stack: 'Node.js · SQLite · REST API · Minimal Dark / Clean KPI Cards',
-        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#0f172a;">
-          <rect x="14" y="14" width="122" height="44" rx="8" fill="#1e293b"/><text x="24" y="32" fill="#94a3b8" font-size="10" font-family="sans-serif">Revenue</text><text x="24" y="50" fill="#22c55e" font-size="14" font-family="sans-serif" font-weight="700">$48,920</text>
-          <rect x="148" y="14" width="122" height="44" rx="8" fill="#1e293b"/><text x="158" y="32" fill="#94a3b8" font-size="10" font-family="sans-serif">Orders</text><text x="158" y="50" fill="#38bdf8" font-size="14" font-family="sans-serif" font-weight="700">1,284</text>
-          <rect x="282" y="14" width="124" height="44" rx="8" fill="#1e293b"/><text x="292" y="32" fill="#94a3b8" font-size="10" font-family="sans-serif">Active</text><text x="292" y="50" fill="#f59e0b" font-size="14" font-family="sans-serif" font-weight="700">98.4%</text>
-          <rect x="14" y="68" width="392" height="98" rx="8" fill="#1e293b"/>
-          <polyline points="30,146 95,120 160,132 225,95 290,108 380,82" fill="none" stroke="#38bdf8" stroke-width="3"/>
-        </svg>`
+        icon: '📊',
+        th: { title: 'KPI & Analytics Dashboard', desc: 'หน้าสรุปตัวเลข KPI กราฟเปรียบเทียบรายวัน/รายเดือน และตารางรายการล่าสุด ธีม Dark/Light', sample: 'แดชบอร์ดสรุปยอดขายรายวัน รายได้ตามหมวดสินค้า และออเดอร์ล่าสุดแบบเรียลไทม์' },
+        en: { title: 'Analytics & KPI Dashboard', desc: 'KPI cards, interactive charts, and live order table backed by relational SQLite aggregations.', sample: 'Daily sales analytics dashboard with category breakdown and recent orders' },
+        stack: 'Node.js · SQLite · REST API · Charts',
+        dark: true,
+        body: `<header class="nav dark"><b>📊 Sales Analytics</b><span class="pill">Live · วันนี้</span></header>
+          <div class="pad"><div class="grid3">
+          <div class="kpi"><small>ยอดขายวันนี้</small><b style="color:#4ade80;">฿48,920</b></div>
+          <div class="kpi"><small>ออเดอร์</small><b style="color:#38bdf8;">1,284</b></div>
+          <div class="kpi"><small>เติบโต</small><b style="color:#fbbf24;">+18.4%</b></div></div>
+          <div class="kpi" style="margin-top:10px;"><small>แนวโน้มยอดขาย 7 วันล่าสุด</small>
+          <div class="bars"><span style="height:40%"></span><span style="height:65%"></span><span style="height:52%"></span><span style="height:82%"></span><span style="height:70%"></span><span style="height:95%"></span><span style="height:88%"></span></div></div></div>`
       },
       landing: {
-        th: { title: 'Landing Page + เก็บ Lead', desc: 'หน้าแนะนำสินค้า/บริการ Hero Section + ฟีเจอร์ + ฟอร์มลงทะเบียนติดต่อเก็บลง SQLite', sample: 'หน้า Landing Page คอร์สเรียนออนไลน์ มีตารางราคา รีวิว และฟอร์มลงทะเบียนสนใจเรียน' },
-        en: { title: 'Landing Page + Lead Capture', desc: 'Modern hero section, pricing/features cards, and lead-capture form stored in SQLite.', sample: 'SaaS product landing page with pricing tiers, FAQ, and waitlist signup form' },
-        stack: 'Node.js Static · SQLite Leads DB · Responsive Mobile-First UI',
-        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#f8fafc;">
-          <rect x="14" y="12" width="392" height="72" rx="10" fill="#1d4ed8"/>
-          <text x="115" y="42" fill="#fff" font-size="14" font-family="sans-serif" font-weight="700">Your Product Hero Headline</text>
-          <rect x="155" y="52" width="110" height="22" rx="6" fill="#fff"/><text x="178" y="67" fill="#1d4ed8" font-size="10" font-family="sans-serif" font-weight="700">Get Started</text>
-          <rect x="14" y="94" width="124" height="72" rx="8" fill="#fff" stroke="#cbd5e1"/><text x="38" y="134" fill="#0f172a" font-size="11" font-family="sans-serif">Feature 1</text>
-          <rect x="148" y="94" width="124" height="72" rx="8" fill="#fff" stroke="#cbd5e1"/><text x="172" y="134" fill="#0f172a" font-size="11" font-family="sans-serif">Feature 2</text>
-          <rect x="282" y="94" width="124" height="72" rx="8" fill="#eff6ff" stroke="#3b82f6"/><text x="304" y="126" fill="#1d4ed8" font-size="10" font-family="sans-serif" font-weight="700">Lead Form</text><text x="304" y="144" fill="#64748b" font-size="9" font-family="sans-serif">Save to SQLite</text>
-        </svg>`
+        icon: '🌐',
+        th: { title: 'Landing Page + ฟอร์มเก็บ Lead', desc: 'หน้าแรกขายสินค้า/บริการ มี Hero Banner ปุ่ม CTA การ์ดจุดเด่น แพ็กเกจราคา และฟอร์มเก็บรายชื่อลง SQLite', sample: 'หน้า Landing Page คอร์สเรียนออนไลน์ มีตารางราคา รีวิว และฟอร์มลงทะเบียนสนใจเรียน' },
+        en: { title: 'Landing Page + Lead Capture', desc: 'Modern hero banner, feature cards, pricing tiers, and lead-capture form saved in SQLite.', sample: 'SaaS product landing page with pricing tiers, FAQ, and waitlist signup form' },
+        stack: 'Node.js · SQLite Leads DB · Responsive UI',
+        body: `<div class="hero"><b>ปลดล็อกธุรกิจของคุณให้เร็วขึ้น 10x</b><p>แพลตฟอร์มอัตโนมัติครบวงจร เริ่มใช้งานได้ทันทีภายใน 5 นาที</p><button class="btn white">ทดลองใช้ฟรี 14 วัน →</button></div>
+          <div class="pad"><div class="grid3">
+          <div class="card"><b>⚡ รวดเร็ว</b><p class="sub">ประมวลผลแบบเรียลไทม์</p></div>
+          <div class="card"><b>🔒 ปลอดภัย</b><p class="sub">เข้ารหัสข้อมูลทุกขั้นตอน</p></div>
+          <div class="card hi"><b>📩 ลงทะเบียนรับสิทธิ์</b><div class="bar" style="margin:6px 0 0;"><input placeholder="กรอกอีเมลของคุณ" /><button class="btn">ส่ง</button></div></div></div></div>`
+      },
+      ecommerce: {
+        icon: '🛒',
+        th: { title: 'E-Commerce (ร้านค้า + ตะกร้าสินค้า)', desc: 'หน้าร้านแสดงสินค้า แบ่งหมวดหมู่ ปุ่มหยิบใส่ตะกร้า คำนวณราคารวม ฟอร์มสั่งซื้อและเช็คสถานะออเดอร์', sample: 'ร้านขายอุปกรณ์กาแฟออนไลน์ มีหมวดสินค้า ตะกร้าสินค้า เช็คเอาต์ และแจ้งเลขพัสดุ' },
+        en: { title: 'E-Commerce Storefront + Cart', desc: 'Product grid, category filter, interactive shopping cart, checkout form, and order tracking.', sample: 'Online coffee gear store with cart drawer, checkout, and order status tracker' },
+        stack: 'Node.js · Express · SQLite (products + orders)',
+        body: `<header class="nav"><b>🛍️ BrewShop</b><span class="pill">🛒 ตะกร้า (2 ชิ้น · ฿1,480)</span></header>
+          <div class="pad"><div class="grid3">
+          <div class="card"><div class="thumb">☕</div><b>เมล็ดกาแฟคั่วกลาง</b><div class="price">฿390</div><button class="btn full">+ ใส่ตะกร้า</button></div>
+          <div class="card"><div class="thumb">🫖</div><b>กาดริปสแตนเลส</b><div class="price">฿1,090</div><button class="btn full">+ ใส่ตะกร้า</button></div>
+          <div class="card"><div class="thumb">⚖️</div><b>เครื่องชั่งดิจิทัล</b><div class="price">฿850</div><button class="btn full">+ ใส่ตะกร้า</button></div></div></div>`
+      },
+      booking: {
+        icon: '📅',
+        th: { title: 'Booking & Queue (ระบบจองคิว/นัดหมาย)', desc: 'เลือกบริการ เลือกวันที่และช่วงเวลาที่ว่าง ป้องกันจองซ้ำ พร้อมหน้าตรวจสอบสถานะคิวของลูกค้า', sample: 'ระบบจองคิวร้านทำผม/คลินิก เลือกช่าง วันเวลาที่ว่าง และดูสถานะคิวออนไลน์' },
+        en: { title: 'Booking & Queue Scheduler', desc: 'Service selector, date & available time-slot picker with conflict checks and queue status.', sample: 'Clinic & salon appointment booking with specialist selection and time-slot check' },
+        stack: 'Node.js · SQLite (services + slots + bookings)',
+        body: `<header class="nav"><b>📅 จองคิวนัดหมาย</b><span class="pill ok">เปิดรับจองวันนี้</span></header>
+          <div class="pad"><div class="card"><b>เลือกช่วงเวลาที่ว่าง (วันศุกร์ที่ 20)</b>
+          <div class="slots"><span class="slot dis">09:00 เต็ม</span><span class="slot act">10:30 ว่าง ✓</span><span class="slot">13:00 ว่าง</span><span class="slot">15:00 ว่าง</span></div>
+          <div class="bar" style="margin-top:10px;"><input placeholder="ชื่อผู้จอง / เบอร์โทร" /><button class="btn">ยืนยันจองคิว</button></div></div></div>`
+      },
+      kanban: {
+        icon: '📌',
+        th: { title: 'Kanban Board (บอร์ดติดตามงาน)', desc: 'กระดานแบ่งคอลัมน์ To Do / Doing / Done เพิ่มการ์ดงาน กำหนดความสำคัญ ย้ายสถานะงานได้ทันที', sample: 'ระบบติดตามงานทีมพัฒนา แบ่ง 3 คอลัมน์ ติดป้าย Priority และย้ายการ์ดงานได้' },
+        en: { title: 'Kanban Task Board', desc: 'To Do / Doing / Done task board with priority tags, assignee badges, and status switching.', sample: 'Team task board with To Do, Doing, Done columns and priority filters' },
+        stack: 'Node.js · Express · SQLite (boards + tasks)',
+        body: `<header class="nav"><b>📌 Team Sprint Board</b><button class="btn">+ การ์ดงานใหม่</button></header>
+          <div class="pad"><div class="grid3">
+          <div class="col"><small>📝 To Do (2)</small><div class="card"><b>ออกแบบหน้า Login</b><span class="pill warn">High</span></div><div class="card"><b>เชื่อม SQLite</b></div></div>
+          <div class="col"><small>⚙️ Doing (1)</small><div class="card"><b>ทำ API ตะกร้าสินค้า</b><span class="pill">Dev</span></div></div>
+          <div class="col"><small>✅ Done (2)</small><div class="card"><b>ตั้งค่า PM2</b><span class="pill ok">เสร็จ</span></div></div></div></div>`
+      },
+      pos: {
+        icon: '🧾',
+        th: { title: 'POS Cashier (ระบบคิดเงินหน้าร้าน)', desc: 'กดเลือกเมนู/สินค้าฝั่งซ้าย รายการบิลและคำนวณยอดรวม+เงินทอนฝั่งขวา บันทึกยอดขายรายวัน', sample: 'ระบบ POS ร้านชาไข่มุก กดเลือกเมนู-ท็อปปิ้ง ออกใบเสร็จ และสรุปยอดขายรายวัน' },
+        en: { title: 'POS Cashier System', desc: 'Menu grid on left, live receipt and change calculator on right with daily sales history.', sample: 'Cafe & boba shop POS with item modifiers, receipt total, and daily sales log' },
+        stack: 'Node.js · SQLite (menu + orders + items)',
+        body: `<header class="nav"><b>🧾 Cafe POS</b><span class="pill ok">กะเช้า · ฿6,420</span></header>
+          <div class="pad pos"><div class="grid2">
+          <div class="card"><b>🥤 ชาไทยเย็น</b><div class="price">฿55</div></div>
+          <div class="card"><b>☕ ลาเต้เย็น</b><div class="price">฿65</div></div>
+          <div class="card"><b>🍵 มัทฉะ</b><div class="price">฿75</div></div>
+          <div class="card"><b>🥐 ครัวซองต์</b><div class="price">฿85</div></div></div>
+          <div class="card"><b>ใบเสร็จ #1042</b><div class="line-item"><span>ชาไทยเย็น x2</span><span>฿110</span></div><div class="line-item"><span>ครัวซองต์ x1</span><span>฿85</span></div><hr><div class="line-item"><b>รวมสุทธิ</b><b>฿195</b></div><button class="btn full" style="margin-top:8px;">💳 ชำระเงิน &amp; ออกบิล</button></div></div>`
+      },
+      helpdesk: {
+        icon: '🎫',
+        th: { title: 'Helpdesk & Ticket (แจ้งซ่อม/ร้องเรียน)', desc: 'เปิด Ticket แจ้งปัญหา ติดตามสถานะ รอดำเนินการ/กำลังแก้/เสร็จสิ้น พร้อมช่องตอบข้อความระหว่างแอดมินและผู้ใช้', sample: 'ระบบแจ้งซ่อมไอทีในองค์กร ออกเลข Ticket อัปเดตสถานะ และแชทตอบกลับผู้แจ้ง' },
+        en: { title: 'Helpdesk & Support Tickets', desc: 'Issue submission, ticket status workflow (Open/In Progress/Resolved), and reply thread.', sample: 'Internal IT helpdesk ticketing portal with priority tags and live comment thread' },
+        stack: 'Node.js · SQLite (tickets + comments)',
+        body: `<header class="nav"><b>🎫 IT Support Desk</b><button class="btn">+ แจ้งปัญหาใหม่</button></header>
+          <div class="pad pos"><div class="stack">
+          <div class="card hi"><b>#TK-208 เครื่องปริ้นชั้น 3 ค้าง</b><span class="pill warn">กำลังตรวจสอบ</span></div>
+          <div class="card"><b>#TK-207 ขอรีเซ็ตรหัสอีเมล</b><span class="pill ok">แก้ไขแล้ว</span></div></div>
+          <div class="card"><b>แชท #TK-208</b><div class="msg">ผู้ใช้: พิมพ์เอกสารไม่ออกครับ</div><div class="msg adm">IT: กำลังขึ้นไปเช็คให้ครับ</div><div class="bar"><input placeholder="พิมพ์ตอบกลับ..." /><button class="btn">ส่ง</button></div></div></div>`
+      },
+      'blog-cms': {
+        icon: '✍️',
+        th: { title: 'Blog & CMS (เว็บบทความ + หลังบ้าน)', desc: 'หน้ารวมบทความ แยกหมวดหมู่ ค้นหา หน้าอ่านบทความเต็ม และหน้า Admin เพิ่ม/แก้ไข/เผยแพร่บทความ', sample: 'เว็บข่าวและบทความเทคโนโลยี มีแยกหมวดหมู่ ค้นหาบทความ และระบบหลังบ้านเขียนโพสต์' },
+        en: { title: 'Blog & Content CMS', desc: 'Article feed, category filters, reader view, and admin post composer stored in SQLite.', sample: 'Tech magazine & blog portal with categories, search, and admin post editor' },
+        stack: 'Node.js · SQLite (posts + categories)',
+        body: `<header class="nav"><b>✍️ TechDaily Blog</b><button class="btn">+ เขียนบทความ</button></header>
+          <div class="pad"><div class="card" style="margin-bottom:8px;"><span class="pill">AI &amp; Dev</span> <b>5 เทคนิคสร้างเว็บ Full-Stack ให้เร็วขึ้นด้วย SQLite</b><p class="sub">สรุปโครงสร้างฐานข้อมูล 3NF และการตั้งค่า PM2 สำหรับงานโปรดักชัน...</p></div>
+          <div class="card"><span class="pill ok">Tutorial</span> <b>เริ่มต้นใช้งาน Node.js + REST API ฉบับเข้าใจง่าย</b><p class="sub">อธิบายตั้งแต่การออกแบบ Route จนถึงการทดสอบ API ครบจบ...</p></div></div>`
       }
     };
+
+    function buildTplPreviewDoc(id) {
+      const t = TPL_EXAMPLES[id];
+      const darkCss = t.dark ? 'body{background:#0f172a;color:#e2e8f0;} .card,.kpi{background:#1e293b;border-color:#334155;}' : 'body{background:#f8fafc;color:#0f172a;} .card{background:#fff;border-color:#e2e8f0;}';
+      return `<!doctype html><html><head><meta charset="utf-8"><style>
+        *{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;}
+        body{margin:0;font-size:12px;} ${darkCss}
+        .nav{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;}
+        .nav.dark{background:#1e293b;border-color:#334155;color:#fff;}
+        .pad{padding:12px;} .bar{display:flex;gap:6px;margin-bottom:10px;align-items:center;}
+        input{flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;width:100%;}
+        label{display:block;font-size:11px;color:#64748b;margin:6px 0 3px;}
+        .btn{background:#2563eb;color:#fff;border:0;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;}
+        .btn.white{background:#fff;color:#1d4ed8;margin-top:8px;} .btn.full{width:100%;}
+        .sm{padding:3px 7px;border-radius:5px;border:1px solid #cbd5e1;background:#fff;font-size:10px;} .sm.red{color:#dc2626;}
+        .pill{background:#e0e7ff;color:#3730a3;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;}
+        .pill.ok,.ok{background:#dcfce7;color:#15803d;padding:2px 6px;border-radius:6px;font-weight:700;}
+        .pill.warn,.warn{background:#fef3c7;color:#b45309;padding:2px 6px;border-radius:6px;font-weight:700;}
+        table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;}
+        th,td{padding:7px 9px;text-align:left;border-bottom:1px solid #f1f5f9;font-size:11px;} th{background:#f1f5f9;color:#475569;}
+        .center{display:grid;place-items:center;min-height:280px;padding:12px;} .w320{width:100%;max-width:300px;}
+        .card{border:1px solid #e2e8f0;border-radius:10px;padding:10px;} .card.hi{border-color:#3b82f6;background:#eff6ff;}
+        .sub{font-size:11px;color:#64748b;margin:4px 0 0;} .link{color:#2563eb;font-weight:600;}
+        .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;} .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+        .kpi{border:1px solid #334155;border-radius:10px;padding:10px;} .kpi b{display:block;font-size:16px;margin-top:4px;}
+        .bars{display:flex;align-items:flex-end;gap:8px;height:85px;padding-top:10px;}
+        .bars span{flex:1;background:linear-gradient(#38bdf8,#2563eb);border-radius:5px 5px 0 0;}
+        .hero{background:linear-gradient(135deg,#1d4ed8,#4f46e5);color:#fff;padding:20px 14px;text-align:center;} .hero b{font-size:15px;} .hero p{font-size:11px;opacity:.9;margin:6px 0;}
+        .thumb{height:54px;background:#f1f5f9;border-radius:8px;display:grid;place-items:center;font-size:26px;margin-bottom:6px;}
+        .price{color:#2563eb;font-weight:800;font-size:13px;margin:4px 0 6px;}
+        .slots{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+        .slot{padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:600;}
+        .slot.act{background:#2563eb;color:#fff;border-color:#2563eb;} .slot.dis{opacity:.45;text-decoration:line-through;}
+        .col{background:#f1f5f9;padding:8px;border-radius:10px;display:flex;flex-direction:column;gap:6px;}
+        .pos{display:grid;grid-template-columns:1.2fr 1fr;gap:10px;}
+        .line-item{display:flex;justify-content:space-between;font-size:11px;margin:4px 0;}
+        .stack{display:flex;flex-direction:column;gap:8px;}
+        .msg{background:#f1f5f9;padding:5px 8px;border-radius:7px;margin:5px 0;font-size:11px;} .msg.adm{background:#dbeafe;text-align:right;}
+      </style></head><body>${t.body}</body></html>`;
+    }
 
     const MODEL_PRESETS = {
       'claude-cli': ['claude-opus-5-5', 'claude-sonnet-4-20250514'],
@@ -297,18 +407,30 @@
       document.getElementById('btnTplPrev').textContent = u.tplPrevBtn;
     }
 
+    function setTplViewport(width) {
+      const f = document.getElementById('tplPreviewFrame');
+      if (f) f.style.width = width;
+    }
+
     function openTplPreview(key) {
       const id = TPL_EXAMPLES[key] ? key : 'crud-sqlite';
       const tpl = TPL_EXAMPLES[id];
       const info = tpl[curLang] || tpl.th;
       const u = UI_TXT[curLang];
       const tabs = Object.keys(TPL_EXAMPLES).map(k =>
-        `<button class="sm ${k === id ? 'primary' : ''}" onclick="openTplPreview('${k}')">${k}</button>`
+        `<button class="sm ${k === id ? 'primary' : ''}" onclick="openTplPreview('${k}')">${TPL_EXAMPLES[k].icon} ${k}</button>`
       ).join('');
-      openModal(`${u.tplModalTitle}: ${id}`, `
+      openModal(`${u.tplModalTitle}: ${tpl.icon} ${id}`, `
         <div class="stack">
           <div class="row">${tabs}</div>
-          ${tpl.svg}
+          <div class="row" style="justify-content:space-between;">
+            <span class="meta">${curLang === 'en' ? 'Live Interactive Mockup Preview' : 'หน้าตาตัวอย่างจำลอง (Interactive UI)'}</span>
+            <div class="row">
+              <button class="sm" onclick="setTplViewport('100%')">🖥️ Desktop</button>
+              <button class="sm" onclick="setTplViewport('360px')">📱 Mobile</button>
+            </div>
+          </div>
+          <div class="tpl-stage"><iframe id="tplPreviewFrame" class="tpl-frame" sandbox></iframe></div>
           <div>
             <strong>${esc(info.title)}</strong>
             <div class="meta" style="margin-top:4px;">${esc(info.desc)}</div>
@@ -320,13 +442,17 @@
             <button class="primary" onclick="useTplExample('${id}')">${u.tplUseBtn}</button>
           </div>
         </div>`);
+      document.getElementById('tplPreviewFrame').srcdoc = buildTplPreviewDoc(id);
     }
 
     function useTplExample(id) {
       const tpl = TPL_EXAMPLES[id];
       document.getElementById('tplSel').value = id;
       const conceptEl = document.getElementById('appConcept');
-      if (!conceptEl.value.trim()) conceptEl.value = (tpl[curLang] || tpl.th).sample;
+      if (!conceptEl.value.trim() || conceptEl.dataset.fromTpl === '1') {
+        conceptEl.value = (tpl[curLang] || tpl.th).sample;
+        conceptEl.dataset.fromTpl = '1';
+      }
       closeModal();
       toast(`${UI_TXT[curLang].tplSelected} ${id}`);
     }
