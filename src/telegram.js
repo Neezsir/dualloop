@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { t } from './i18n.js';
 
 /**
  * Minimal zero-dependency Telegram Bot client with inline keyboards, custom text input, cancel, and photo support.
  */
 export class TelegramController {
   constructor(config, handlers) {
+    this.config = config;
     this.token = config.telegramToken;
     this.chatId = String(config.telegramChatId || '');
     this.handlers = handlers;
@@ -123,11 +125,11 @@ export class TelegramController {
       return [{ text: `${prefix}${opt}`, callback_data: `sel:${qid}:${idx}` }];
     });
     if (state.allowMultiple) {
-      rows.push([{ text: '✅ ยืนยันคำตอบ (Submit)', callback_data: `sub:${qid}` }]);
+      rows.push([{ text: t(this.config.lang, 'btnSubmit'), callback_data: `sub:${qid}` }]);
     }
     const actions = [];
-    if (state.allowCustom) actions.push({ text: '✏️ พิมพ์ตอบเอง', callback_data: `cus:${qid}` });
-    if (state.allowCancel) actions.push({ text: '❌ ยกเลิกงาน', callback_data: `can:${qid}` });
+    if (state.allowCustom) actions.push({ text: t(this.config.lang, 'btnCustom'), callback_data: `cus:${qid}` });
+    if (state.allowCancel) actions.push({ text: t(this.config.lang, 'btnCancel'), callback_data: `can:${qid}` });
     if (actions.length) rows.push(actions);
     return { inline_keyboard: rows };
   }
@@ -161,11 +163,11 @@ export class TelegramController {
 
     if (kind === 'cus') {
       this.awaitingTextQid = qid;
-      await this.api('answerCallbackQuery', { callback_query_id: cb.id, text: 'พิมพ์คำตอบส่งมาในแชทได้เลย' });
+      await this.api('answerCallbackQuery', { callback_query_id: cb.id, text: 'OK' });
       await this.api('editMessageText', {
         chat_id: chatId,
         message_id: cb.message.message_id,
-        text: `${pending.question}\n\n✏️ กรุณาพิมพ์คำตอบของคุณส่งมาในแชทได้เลยครับ`
+        text: `${pending.question}\n\n${t(this.config.lang, 'askCustomPrompt')}`
       });
       return;
     }

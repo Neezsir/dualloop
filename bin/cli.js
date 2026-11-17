@@ -148,8 +148,16 @@ async function pickModel(label, choices) {
 async function runInit(onlySkill = false) {
   console.log('\x1b[1m=== DualLoop Setup ===\x1b[0m');
 
+  const langPick = await askCliChoice(
+    '0) Select Language / เลือกภาษา:',
+    ['ไทย (th)', 'English (en)'],
+    false
+  );
+  const lang = langPick.includes('en') ? 'en' : 'th';
+  const en = lang === 'en';
+
   const skillTarget = await askCliChoice(
-    '1) ต้องการติดตั้ง SKILL.md ลงโฟลเดอร์ใด?',
+    en ? '1) Install SKILL.md into which agent directory?' : '1) ต้องการติดตั้ง SKILL.md ลงโฟลเดอร์ใด?',
     ['all', 'antigravity', 'claude', 'agents', 'skip'],
     false
   );
@@ -157,34 +165,42 @@ async function runInit(onlySkill = false) {
 
   if (onlySkill) {
     const configToo = await askCliChoice(
-      'ต้องการตั้งค่าเลือก Model AI และโหมดสลับอัตโนมัติ (.env) ด้วยไหม?',
-      ['Yes', 'No (ติดตั้งเฉพาะ Skill)'],
+      en ? 'Configure AI models & Auto-Fallback (.env) now?' : 'ต้องการตั้งค่าเลือก Model AI และโหมดสลับอัตโนมัติ (.env) ด้วยไหม?',
+      ['Yes', en ? 'No (Skill only)' : 'No (ติดตั้งเฉพาะ Skill)'],
       false
     );
     if (configToo !== 'Yes') return;
   }
 
-  const bePick = await askCliChoice('2) เลือก AI ฝั่ง Backend / DB / Test:', PROVIDER_OPTIONS, false);
+  const bePick = await askCliChoice(
+    en ? '2) Select Backend / DB / Test AI Provider:' : '2) เลือก AI ฝั่ง Backend / DB / Test:',
+    PROVIDER_OPTIONS,
+    false
+  );
   const backendProvider = bePick.split(' ')[0];
   const backendModel = await pickModel(
-    `3) เลือกรุ่น Backend (${backendProvider}):`,
+    en ? `3) Select Backend Model (${backendProvider}):` : `3) เลือกรุ่น Backend (${backendProvider}):`,
     PROVIDER_MODELS[backendProvider] || ['custom']
   );
 
   const feDefaults = [PROVIDER_OPTIONS[1], ...PROVIDER_OPTIONS.filter((_, i) => i !== 1)];
-  const fePick = await askCliChoice('4) เลือก AI ฝั่ง Frontend UI:', feDefaults, false);
+  const fePick = await askCliChoice(
+    en ? '4) Select Frontend UI AI Provider:' : '4) เลือก AI ฝั่ง Frontend UI:',
+    feDefaults,
+    false
+  );
   const frontendProvider = fePick.split(' ')[0];
   const frontendModel = await pickModel(
-    `5) เลือกรุ่น Frontend (${frontendProvider}):`,
+    en ? `5) Select Frontend Model (${frontendProvider}):` : `5) เลือกรุ่น Frontend (${frontendProvider}):`,
     PROVIDER_MODELS[frontendProvider] || ['custom']
   );
 
   const fallbackPick = await askCliChoice(
-    '6) โหมดสลับ AI อัตโนมัติ (Auto-Fallback) เมื่อตัวหลักติด/หมดโควตา:',
-    ['เปิด (แนะนำ: สลับ CLI <-> API อัตโนมัติ)', 'ปิด (ใช้เฉพาะโหมดที่เลือก)'],
+    en ? '6) Enable Auto-Fallback (switch CLI <-> API on error/quota)?' : '6) โหมดสลับ AI อัตโนมัติ (Auto-Fallback) เมื่อตัวหลักติด/หมดโควตา:',
+    en ? ['Enable (Recommended)', 'Disable (Strict mode only)'] : ['เปิด (แนะนำ: สลับ CLI <-> API อัตโนมัติ)', 'ปิด (ใช้เฉพาะโหมดที่เลือก)'],
     false
   );
-  const autoFallback = fallbackPick.startsWith('เปิด');
+  const autoFallback = fallbackPick.startsWith('เปิด') || fallbackPick.startsWith('Enable');
 
   const used = new Set([backendProvider, frontendProvider]);
   const anthropicKey = used.has('anthropic') ? await askText('ANTHROPIC_API_KEY: ') : '';
@@ -199,8 +215,8 @@ async function runInit(onlySkill = false) {
   const customKey = used.has('custom') ? await askText('CUSTOM_API_KEY: ') : '';
 
   const useTelegram = await askCliChoice(
-    '7) ต้องการเปิดใช้บอทสั่งงานผ่าน Telegram ด้วยไหม?',
-    ['No (ใช้เฉพาะ IDE / Terminal)', 'Yes (ตั้งค่า Telegram Bot + PM2)'],
+    en ? '7) Enable Telegram 2-Way Bot?' : '7) ต้องการเปิดใช้บอทสั่งงานผ่าน Telegram ด้วยไหม?',
+    en ? ['No (IDE / Terminal only)', 'Yes (Setup Telegram Bot + PM2)'] : ['No (ใช้เฉพาะ IDE / Terminal)', 'Yes (ตั้งค่า Telegram Bot + PM2)'],
     false
   );
 
@@ -208,7 +224,9 @@ async function runInit(onlySkill = false) {
   let tgChat = '';
   if (useTelegram.startsWith('Yes')) {
     tgToken = await askText('TELEGRAM_BOT_TOKEN: ');
-    tgChat = tgToken.trim() ? await askText('TELEGRAM_CHAT_ID (เว้นว่างแล้วทักบอทเพื่อเอาทีหลังได้): ') : '';
+    tgChat = tgToken.trim()
+      ? await askText(en ? 'TELEGRAM_CHAT_ID (optional, send /start to bot later): ' : 'TELEGRAM_CHAT_ID (เว้นว่างแล้วทักบอทเพื่อเอาทีหลังได้): ')
+      : '';
   }
 
   const envContent = [
@@ -230,14 +248,19 @@ async function runInit(onlySkill = false) {
     `BASE_PORT=4100`,
     `MAX_FIX_LOOPS=4`,
     `PONYTAIL_LEVEL=full`,
-    `AUTO_FALLBACK=${autoFallback}`
+    `AUTO_FALLBACK=${autoFallback}`,
+    `DUALLOOP_LANG=${lang}`
   ].join('\n');
 
   fs.writeFileSync(path.resolve(process.cwd(), '.env'), envContent + '\n', 'utf8');
   console.log('\x1b[32m✓\x1b[0m Created .env');
 
   if (useTelegram.startsWith('Yes') && tgToken.trim()) {
-    const startPm2 = await askCliChoice('8) เริ่มรัน Telegram Daemon ด้วย PM2 เลยไหม?', ['Yes', 'No'], false);
+    const startPm2 = await askCliChoice(
+      en ? '8) Start Telegram + Dashboard Daemon via PM2 now?' : '8) เริ่มรัน Telegram Daemon ด้วย PM2 เลยไหม?',
+      ['Yes', 'No'],
+      false
+    );
     if (startPm2 === 'Yes') {
       const res = runCmd(`pm2 start "${path.join(PKG_ROOT, 'ecosystem.config.cjs')}"`, process.cwd());
       runCmd('pm2 save', process.cwd());

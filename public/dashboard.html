@@ -48,6 +48,7 @@
       </div>
       <div class="row">
         <a href="/docs/architecture.html" target="_blank" style="color:var(--acc);font-size:13px;text-decoration:none;font-weight:600;">Architecture Diagram ↗</a>
+        <button id="langBtn" onclick="toggleLang()">🌐 TH</button>
         <button id="themeBtn" onclick="toggleTheme()">🌙 Dark</button>
         <button onclick="loadData()">↻ Refresh</button>
       </div>
@@ -57,7 +58,7 @@
       <div class="row" style="margin-bottom:10px;">
         <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
         <input id="appConcept" placeholder="อธิบาย Concept โปรแกรม..." style="flex:2;" />
-        <button class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
+        <button id="btnCreate" class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
       </div>
       <div class="row" style="border-top:1px solid var(--line);padding-top:10px;">
         <span class="meta">Backend:</span>
@@ -67,7 +68,7 @@
         <select id="feProv"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
         <input id="feModel" placeholder="Frontend Model" style="max-width:190px;" />
         <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="autoFb" style="min-width:auto;flex:0;" /> Auto-Fallback</label>
-        <button onclick="saveAiConfig()">บันทึก AI</button>
+        <button id="btnSaveAi" onclick="saveAiConfig()">บันทึก AI</button>
       </div>
     </div>
 
@@ -93,6 +94,61 @@
   </div>
 
   <script>
+    const UI_TXT = {
+      th: {
+        namePh: 'ชื่อโปรเจกต์ (เช่น todo-app)',
+        conceptPh: 'อธิบาย Concept โปรแกรม...',
+        create: '+ สร้างโปรเจกต์ใหม่',
+        saveAi: 'บันทึก AI',
+        savedAi: 'บันทึกค่า AI ชั่วคราวแล้ว',
+        empty: 'ยังไม่มีโปรเจกต์ (สร้างด้านบนหรือพิมพ์ /new ใน Telegram)',
+        qTitle: '❓ คำถามรอคำตอบ:',
+        customBtn: '✏️ พิมพ์ตอบเอง',
+        cancelBtn: '❌ ยกเลิก',
+        contPrompt: 'สั่งแก้/เพิ่มฟีเจอร์ให้',
+        delConfirm: 'ลบ',
+        noDb: 'ไม่พบไฟล์ SQLite (.db)',
+        feedTitle: '📡 Live Activity Feed (Phase 1 → 4)'
+      },
+      en: {
+        namePh: 'Project name (e.g. todo-app)',
+        conceptPh: 'Describe your app concept...',
+        create: '+ New Project',
+        saveAi: 'Save AI',
+        savedAi: 'AI config updated for this session',
+        empty: 'No projects yet (create above or send /new on Telegram)',
+        qTitle: '❓ Pending Question:',
+        customBtn: '✏️ Custom Answer',
+        cancelBtn: '❌ Cancel',
+        contPrompt: 'Describe new feature or fix for',
+        delConfirm: 'Delete',
+        noDb: 'No SQLite (.db) file found',
+        feedTitle: '📡 Live Activity Feed (Phase 1 → 4)'
+      }
+    };
+    let curLang = localStorage.getItem('dualloop-lang') || 'th';
+    function applyLang(l) {
+      curLang = l === 'en' ? 'en' : 'th';
+      localStorage.setItem('dualloop-lang', curLang);
+      const u = UI_TXT[curLang];
+      document.getElementById('langBtn').textContent = curLang === 'en' ? '🌐 EN' : '🌐 TH';
+      document.getElementById('appName').placeholder = u.namePh;
+      document.getElementById('appConcept').placeholder = u.conceptPh;
+      document.getElementById('btnCreate').textContent = u.create;
+      document.getElementById('btnSaveAi').textContent = u.saveAi;
+    }
+    async function toggleLang() {
+      const next = curLang === 'en' ? 'th' : 'en';
+      applyLang(next);
+      await fetch('/api/lang', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ lang: next })
+      });
+      loadData();
+    }
+    applyLang(curLang);
+
     function applyTheme(t) {
       document.documentElement.setAttribute('data-theme', t);
       localStorage.setItem('dualloop-theme', t);
@@ -127,7 +183,7 @@
           autoFallback: document.getElementById('autoFb').checked
         })
       });
-      if (r.ok) alert('บันทึกค่า AI ชั่วคราวแล้ว');
+      if (r.ok) alert(UI_TXT[curLang].savedAi);
     }
 
     async function act(slug, action) {
@@ -154,7 +210,7 @@
       const j = await r.json();
       document.getElementById('inspectorTitle').textContent = `🗄️ DB Viewer: ${slug} (${j.dbFile || 'no SQLite'})`;
       if (!j.found) {
-        document.getElementById('inspectorBody').innerHTML = '<div class="meta">ไม่พบไฟล์ SQLite (.db)</div>';
+        document.getElementById('inspectorBody').innerHTML = `<div class="meta">${UI_TXT[curLang].noDb}</div>`;
       } else {
         document.getElementById('inspectorBody').innerHTML = j.tables.map(t => {
           if (!t.rows.length) return `<h4>${esc(t.name)} (0 rows)</h4>`;
@@ -183,7 +239,7 @@
     }
 
     async function openContinue(slug) {
-      const instruction = prompt(`สั่งแก้/เพิ่มฟีเจอร์ให้ ${slug}:`);
+      const instruction = prompt(`${UI_TXT[curLang].contPrompt} ${slug}:`);
       if (!instruction) return;
       const r = await fetch('/api/continue', {
         method: 'POST',
@@ -229,12 +285,12 @@
           : `<button class="primary" onclick="submitWebAns('${q.id}', ${i})">${esc(o)}</button>`
       ).join(' ');
       box.innerHTML = `
-        <div style="margin-bottom:8px;"><strong>❓ คำถามรอคำตอบ:</strong> ${esc(q.question)}</div>
+        <div style="margin-bottom:8px;"><strong>${UI_TXT[curLang].qTitle}</strong> ${esc(q.question)}</div>
         <div class="row" style="gap:8px;">
           ${opts}
           ${q.allowMultiple ? `<button class="primary" onclick="submitWebMulti('${q.id}')">Submit</button>` : ''}
-          ${q.allowCustom ? `<button onclick="submitWebCustom('${q.id}')">✏️ พิมพ์ตอบเอง</button>` : ''}
-          ${q.allowCancel ? `<button class="danger" onclick="submitWebCancel('${q.id}')">❌ ยกเลิก</button>` : ''}
+          ${q.allowCustom ? `<button onclick="submitWebCustom('${q.id}')">${UI_TXT[curLang].customBtn}</button>` : ''}
+          ${q.allowCancel ? `<button class="danger" onclick="submitWebCancel('${q.id}')">${UI_TXT[curLang].cancelBtn}</button>` : ''}
         </div>`;
     }
 
@@ -260,13 +316,14 @@
     async function loadData() {
       const res = await fetch('/api/projects');
       const data = await res.json();
+      if (data.lang && data.lang !== curLang) applyLang(data.lang);
       renderQuestions(data.pendingQuestions || []);
       document.getElementById('sysMeta').textContent =
         `Queue: ${data.queueSize} | Running: ${data.running ? 'YES' : 'IDLE'} | Disk: ${data.disk} | Updated: ${new Date().toLocaleTimeString()}`;
 
       const grid = document.getElementById('projectsGrid');
       if (!data.projects.length) {
-        grid.innerHTML = '<div class="panel">ยังไม่มีโปรเจกต์ (สร้างด้านบนหรือพิมพ์ /new ใน Telegram)</div>';
+        grid.innerHTML = `<div class="panel">${UI_TXT[curLang].empty}</div>`;
         return;
       }
 
@@ -295,7 +352,7 @@
               <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/api-tester.html','_blank')">API Tester</button>
               <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/test-report.html','_blank')">Test Report</button>
               <button onclick="act('${p.slug}','rollback')">Rollback</button>
-              <button class="danger" onclick="if(confirm('ลบ ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
+              <button class="danger" onclick="if(confirm('${UI_TXT[curLang].delConfirm} ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
             </div>
           </div>`;
       }).join('');

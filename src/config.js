@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { normalizeLang } from './i18n.js';
 
 function resolveWorkspacesDir(raw) {
   const val = raw || '~/Desktop';
@@ -84,6 +85,7 @@ export function loadConfig() {
     autoPushOrigin: process.env.AUTO_PUSH_ORIGIN !== 'false',
     cliTimeoutMs: Number(process.env.CLI_TIMEOUT_MS || 180000),
     ponytailLevel: process.env.PONYTAIL_LEVEL || 'full',
-    autoFallback: process.env.AUTO_FALLBACK !== 'false'
+    autoFallback: process.env.AUTO_FALLBACK !== 'false',
+    lang: normalizeLang(process.env.DUALLOOP_LANG || 'th')
   };
 }

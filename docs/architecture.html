@@ -30,7 +30,10 @@
   <div class="wrap">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h1>⚡ DualLoop System Architecture &amp; Full-Loop Flow</h1>
-      <button id="themeBtn" class="tab" onclick="toggleTheme()">🌙 Dark</button>
+      <div style="display:flex;gap:8px;">
+        <button id="langBtn" class="tab" onclick="toggleLang()">🌐 TH</button>
+        <button id="themeBtn" class="tab" onclick="toggleTheme()">🌙 Dark</button>
+      </div>
     </div>
     <p class="sub">Interactive System Map · Click any component below to inspect files, rules, and data flow.</p>
 
@@ -58,32 +61,62 @@
   </div>
 
   <script>
-    const NODES = [
-      { title: '1. Entry Channels', file: 'src/telegram.js, src/dashboard.js, bin/cli.js, skills/dualloop/SKILL.md',
-        desc: 'รับคำสั่งจาก Telegram (ปุ่มกด, พิมพ์ตอบเอง, รูป UI, เสียง), Web Dashboard (:4099), Terminal CLI (ลูกศร ↑/↓), และ IDE Agent Skill' },
-      { title: '2. Orchestrator & Queue', file: 'src/orchestrator.js, src/state.js',
-        desc: 'คุมคิวงานต่อเนื่อง (Job Queue), Auto-Resume หลัง PM2 รีสตาร์ต, Budget Cap (MAX_AI_CALLS), Templates, PROJECT_RULES.md และแจ้งเตือนแบ่ง 4 เฟสละเอียด' },
-      { title: '3. Phase 1: Clarify & Contracts', file: 'src/ai.js (clarifyStep)',
-        desc: 'สัมภาษณ์แบบเลือกติ๊ก (grill-me + Ponytail) พร้อมเลือก UI Theme Preset จนได้ SPEC.md, DB_SCHEMA.sql (3NF + FK), และ API_CONTRACT.json' },
-      { title: '4. Phase 2: Checkpoint & Port', file: 'src/runner.js',
-        desc: 'จอง Port ว่างจริงใน OS (net.createServer), สร้าง Git Checkpoint Commit และ Backup ไฟล์ SQLite (.dualloop-backup)' },
-      { title: '5. Phase 3: Dual-AI Build + Review', file: 'src/ai.js (executeTask, crossReview)',
-        desc: 'Backend AI (DB, Migration, Seed, API, Tests, Security) + Frontend AI (UI, E2E) พร้อม Skip-on-Block, Schema Guard, Auto-Fallback 10 ค่าย และ Cross-AI Review' },
-      { title: '6. Phase 4: 4-Layer Verify', file: 'src/runner.js (verifyProject)',
-        desc: '1) Security Scan (Secrets & SQLi) -> 2) PM2 online + save -> 3) DB/API Tests + Contract GET -> 4) Headless Chrome CDP (1280px/390px, Broken Img, PNG Screenshot)' },
-      { title: '7. Production Ops & Watchdog', file: 'src/orchestrator.js, src/runner.js',
-        desc: 'เฝ้า PM2 ทุก 45 วิแจ้งแครชเข้าแชท, รายงาน Health/Disk 24 ชม., /db, /env, /tunnel, /domain, /export (.zip/gh), /update และ auto-push origin' }
-    ];
+    const NODES_DATA = {
+      th: [
+        { title: '1. Entry Channels', file: 'src/telegram.js, src/dashboard.js, bin/cli.js, skills/dualloop/SKILL.md',
+          desc: 'รับคำสั่งจาก Telegram (ปุ่มกด, พิมพ์ตอบเอง, รูป UI, เสียง), Web Dashboard (:4099), Terminal CLI (ลูกศร ↑/↓) และ IDE Agent Skill' },
+        { title: '2. Orchestrator & Queue', file: 'src/orchestrator.js, src/state.js',
+          desc: 'คุมคิวงานต่อเนื่อง (Job Queue), Auto-Resume หลัง PM2 รีสตาร์ต, Budget Cap (MAX_AI_CALLS), Templates, PROJECT_RULES.md และแจ้งเตือนแบ่ง 4 เฟสละเอียด' },
+        { title: '3. Phase 1: Clarify & Contracts', file: 'src/ai.js (clarifyStep)',
+          desc: 'สัมภาษณ์แบบเลือกติ๊ก (grill-me + Ponytail) พร้อมเลือก UI Theme Preset จนได้ SPEC.md, DB_SCHEMA.sql (3NF + FK), และ API_CONTRACT.json' },
+        { title: '4. Phase 2: Checkpoint & Port', file: 'src/runner.js',
+          desc: 'จอง Port ว่างจริงใน OS (net.createServer), สร้าง Git Checkpoint Commit และ Backup ไฟล์ SQLite (.dualloop-backup)' },
+        { title: '5. Phase 3: Dual-AI Build + Review', file: 'src/ai.js (executeTask, crossReview)',
+          desc: 'Backend AI (DB, Migration, Seed, API, Tests, Security) + Frontend AI (UI, E2E) พร้อม Skip-on-Block, Schema Guard, Auto-Fallback 10 ค่าย และ Cross-AI Review' },
+        { title: '6. Phase 4: 4-Layer Verify', file: 'src/runner.js (verifyProject)',
+          desc: '1) Security Scan (Secrets & SQLi) -> 2) PM2 online + save -> 3) DB/API Tests + Contract GET -> 4) Headless Chrome CDP (1280px/390px, Broken Img, Load Test, PNG Screenshot)' },
+        { title: '7. Production Ops & Watchdog', file: 'src/orchestrator.js, src/runner.js',
+          desc: 'เฝ้า PM2 ทุก 45 วิแจ้งแครชเข้าแชท, รายงาน Health/Disk 24 ชม., /db, /env, /tunnel, /domain, /export (.zip/gh), /update และ auto-push origin' }
+      ],
+      en: [
+        { title: '1. Entry Channels', file: 'src/telegram.js, src/dashboard.js, bin/cli.js, skills/dualloop/SKILL.md',
+          desc: 'Accepts commands from Telegram (buttons, custom text, UI photo, voice), Web Dashboard (:4099), Terminal CLI (arrow keys), and IDE Agent Skill.' },
+        { title: '2. Orchestrator & Queue', file: 'src/orchestrator.js, src/state.js',
+          desc: 'Manages sequential Job Queue, Auto-Resume on PM2 restart, Budget Cap (MAX_AI_CALLS), Templates, PROJECT_RULES.md, and 4-phase progress alerts.' },
+        { title: '3. Phase 1: Clarify & Contracts', file: 'src/ai.js (clarifyStep)',
+          desc: 'Choice-only interview (grill-me + Ponytail) + UI Theme Preset outputting SPEC.md, DB_SCHEMA.sql (3NF + FK), and API_CONTRACT.json.' },
+        { title: '4. Phase 2: Checkpoint & Port', file: 'src/runner.js',
+          desc: 'Allocates real free OS port (net.createServer), creates Git Checkpoint Commit, and backs up SQLite DB files (.dualloop-backup).' },
+        { title: '5. Phase 3: Dual-AI Build + Review', file: 'src/ai.js (executeTask, crossReview)',
+          desc: 'Backend AI (DB, Migration, Seed, API, Tests, Security) + Frontend AI (UI, E2E) with Skip-on-Block, Schema Guard, 10-provider Auto-Fallback & Cross-AI Review.' },
+        { title: '6. Phase 4: 4-Layer Verify', file: 'src/runner.js (verifyProject)',
+          desc: '1) Security Scan -> 2) PM2 online + save -> 3) DB/API Tests + Contract GET -> 4) Headless Chrome CDP (1280px/390px, Broken Img, Load Test, Screenshot).' },
+        { title: '7. Production Ops & Watchdog', file: 'src/orchestrator.js, src/runner.js',
+          desc: '45s PM2 crash watchdog, 24h Health/Disk report, /db, /env, /tunnel, /domain, /export (.zip/gh), /update, and auto-push origin.' }
+      ]
+    };
 
-    const grid = document.getElementById('flowGrid');
-    grid.innerHTML = NODES.map((n, i) => `
-      <div class="node" onclick="pickNode(${i}, this)">
-        <h3>${n.title}</h3>
-        <p>${n.file}</p>
-      </div>
-    `).join('');
+    let curLang = localStorage.getItem('dualloop-lang') || 'th';
+    function renderNodes() {
+      const NODES = NODES_DATA[curLang] || NODES_DATA.th;
+      const grid = document.getElementById('flowGrid');
+      grid.innerHTML = NODES.map((n, i) => `
+        <div class="node" onclick="pickNode(${i}, this)">
+          <h3>${n.title}</h3>
+          <p>${n.file}</p>
+        </div>
+      `).join('');
+      document.getElementById('langBtn').textContent = curLang === 'en' ? '🌐 EN' : '🌐 TH';
+    }
+    function toggleLang() {
+      curLang = curLang === 'en' ? 'th' : 'en';
+      localStorage.setItem('dualloop-lang', curLang);
+      renderNodes();
+    }
+    renderNodes();
 
     function pickNode(i, el) {
+      const NODES = NODES_DATA[curLang] || NODES_DATA.th;
       document.querySelectorAll('.node').forEach(x => x.classList.remove('selected'));
       el.classList.add('selected');
       document.getElementById('detailTitle').textContent = `${NODES[i].title} — (${NODES[i].file})`;

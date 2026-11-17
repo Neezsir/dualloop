@@ -40,6 +40,7 @@ pm2 start ecosystem.config.cjs
 - `/health` — System health, PM2 & disk summary (plus daily 24h report)
 - `/tunnel <slug>` / `/tunnel stop <slug>` — Open/close temporary HTTPS preview URL
 - `/model <backend|frontend> [provider] <model-id>` — Switch provider/model live
+- `/lang <th|en>` — Switch language (Thai / English) live across Telegram & Dashboard
 - `/export <slug>` — Export project `.zip` to chat or push to GitHub repo
 - `/stats` — View build duration, AI call counts & fix loops
 - `/update` — Self-update DualLoop via `git pull` & restart PM2

@@ -4,6 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { extractJson } from '../src/ai.js';
+import { normalizeLang, t } from '../src/i18n.js';
 import { allocatePort, runSecurityCheck } from '../src/runner.js';
 import { buildCompressedContext, createProjectState, loadState } from '../src/state.js';
 import { generateProjectDocs } from '../src/docsgen.js';
@@ -58,4 +59,11 @@ test('state, allocatePort, and generateProjectDocs create expected artifacts', a
   } finally {
     fs.rmSync(ws, { recursive: true, force: true });
   }
+});
+
+test('i18n switches between th and en keeping technical terms intact', () => {
+  assert.equal(normalizeLang('en'), 'en');
+  assert.equal(normalizeLang('th'), 'th');
+  assert.match(t('en', 'clarifyStart', { name: 'App' }), /Phase 1\/4: Clarify/);
+  assert.match(t('th', 'clarifyStart', { name: 'App' }), /กำลังวิเคราะห์/);
 });

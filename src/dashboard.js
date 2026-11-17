@@ -3,6 +3,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeLang } from './i18n.js';
 import { ensureMetrics, listProjects, loadState } from './state.js';
 import {
   deleteProject,
@@ -141,10 +142,31 @@ export function startDashboard({
         const q = getQueueInfo();
         return json(res, 200, {
           ...q,
+          lang: config.lang,
           disk: getDiskFreeSummary(config.workspacesDir),
           pendingQuestions: getPendingQuestions(),
           projects
         });
+      }
+
+      if (req.method === 'POST' && urlPath === '/api/lang') {
+        const { lang } = await readBody(req);
+        config.lang = normalizeLang(lang);
+        const envPath = path.resolve(process.cwd(), '.env');
+        if (fs.existsSync(envPath)) {
+          const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+          let updated = false;
+          const next = lines.map((l) => {
+            if (l.startsWith('DUALLOOP_LANG=')) {
+              updated = true;
+              return `DUALLOOP_LANG=${config.lang}`;
+            }
+            return l;
+          });
+          if (!updated) next.push(`DUALLOOP_LANG=${config.lang}`);
+          fs.writeFileSync(envPath, next.filter((l, i, a) => l || i < a.length - 1).join('\n') + '\n', 'utf8');
+        }
+        return json(res, 200, { ok: true, lang: config.lang });
       }
 
       if (req.method === 'POST' && urlPath === '/api/answer') {

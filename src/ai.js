@@ -211,10 +211,15 @@ async function callRole(role, prompt, system, config) {
  * Grill-me clarification step: returns clickable options only, or final Spec + Contract + Tasks.
  */
 export async function clarifyStep(state, config) {
+  const langRule =
+    config.lang === 'en'
+      ? 'Ask questions and options in English.'
+      : 'Ask questions and options in Thai, keeping technical/programming terms (e.g. API, DB, SQLite, Auth, UI, PM2) in English.';
   const system = `${ponytailDirective(config.ponytailLevel)}
 ${RELATIONAL_DB_RULES}
 You are the System Architect running a strict choice-only grill-me interview.
-Ask ONLY concise questions with 2-4 clickable options (in the user's language) until Tech Stack, Relational DB tables/FKs, Core Flow, and UI Theme Preset (e.g. Clean Light Dashboard, Minimal Dark, Mobile-First SaaS, Dense Admin) are clear.
+${langRule}
+Ask ONLY concise questions with 2-4 clickable options until Tech Stack, Relational DB tables/FKs, Core Flow, and UI Theme Preset (e.g. Clean Light Dashboard, Minimal Dark, Mobile-First SaaS, Dense Admin) are clear.
 Limit to at most 4 questions total before finalizing.`;
 
   const prompt = `

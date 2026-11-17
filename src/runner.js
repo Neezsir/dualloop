@@ -3,6 +3,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawn } from 'node:child_process';
+import { t } from './i18n.js';
 import { listProjects } from './state.js';
 
 function isPortFree(port) {
@@ -629,15 +630,15 @@ export function runSecurityCheck(dir) {
 /**
  * Verify all 4 layers: PM2 runtime, Security, DB/API tests, API contract endpoints, and Frontend DOM/JS/Network.
  */
-export async function verifyProject(dir, state, onStep = () => {}) {
-  await onStep('1/4 ตรวจ Security Baseline (Secrets & SQL)...');
+export async function verifyProject(dir, state, onStep = () => {}, lang = 'th') {
+  await onStep(t(lang, 'verifyStep1'));
   const sec = runSecurityCheck(dir);
   if (!sec.ok) {
     return { ok: false, layer: 'backend', error: sec.error };
   }
 
   // 1. PM2 Runtime check
-  await onStep(`2/4 รัน PM2 (${state.pm2Name} บน Port ${state.port})...`);
+  await onStep(t(lang, 'verifyStep2', { pm2Name: state.pm2Name, port: state.port }));
   const pm2Res = startOrReloadPm2(dir, state);
   if (!pm2Res.ok) {
     return { ok: false, layer: 'backend', error: `PM2 start failed:\n${pm2Res.output}` };
@@ -657,7 +658,7 @@ export async function verifyProject(dir, state, onStep = () => {}) {
   }
 
   // 2. DB & Backend API test suite
-  await onStep(`3/4 เทส DB & API (${state.testCommand || 'HTTP endpoints'})...`);
+  await onStep(t(lang, 'verifyStep3', { cmd: state.testCommand || 'HTTP endpoints' }));
   if (state.testCommand) {
     const testRes = runCmd(state.testCommand, dir, 90000);
     if (!testRes.ok) {
@@ -707,7 +708,7 @@ export async function verifyProject(dir, state, onStep = () => {}) {
   }
 
   // 4. Frontend E2E & Real Headless Browser Probe (JS exceptions, console.error, failed fetch)
-  await onStep('4/4 เทส Frontend UI, Assets & Headless Browser...');
+  await onStep(t(lang, 'verifyStep4'));
   if (state.e2eCommand) {
     const e2eRes = runCmd(state.e2eCommand, dir, 90000);
     if (!e2eRes.ok) {
