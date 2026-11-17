@@ -810,46 +810,111 @@ async function startDaemon() {
         return;
       }
 
-      if (text.startsWith('/new ')) {
-        let raw = text.slice(5).trim();
-        let tplAnswers = [];
-        const tplMatch = raw.match(/^--tpl\s+(\S+)\s+([\s\S]+)$/);
-        if (tplMatch) {
-          const tplName = tplMatch[1].toLowerCase();
-          raw = tplMatch[2].trim();
-          tplAnswers = TEMPLATES[tplName] || [];
+      if (text === '/new' || text.startsWith('/new ')) {
+        try {
+          let raw = text.slice(4).trim();
+          let tplAnswers = [];
+          const tplMatch = raw.match(/^--tpl\s+(\S+)(?:\s+([\s\S]*))?$/);
+          if (tplMatch) {
+            const tplName = tplMatch[1].toLowerCase();
+            raw = (tplMatch[2] || '').trim();
+            tplAnswers = TEMPLATES[tplName] || [];
+          }
+
+          let name = '';
+          let concept = '';
+          if (raw.includes('|')) {
+            const [n, ...rest] = raw.split('|');
+            name = n.trim();
+            concept = rest.join('|').trim();
+          } else if (raw) {
+            const sp = raw.search(/\s+/);
+            if (sp > 0) {
+              name = raw.slice(0, sp).trim();
+              concept = raw.slice(sp).trim();
+            } else {
+              name = raw;
+            }
+          }
+
+          if (!name) {
+            name = (await bot.askText(config.lang === 'en' ? '📝 Project name:' : '📝 พิมพ์ชื่อโปรเจกต์ได้เลยครับ:')).trim();
+          }
+          if (!concept) {
+            concept = (await bot.askText(
+              config.lang === 'en'
+                ? `💡 Describe the concept for "${name}":`
+                : `💡 อธิบาย Concept ของ "${name}" สั้นๆ ได้เลยครับ:`
+            )).trim();
+          }
+
+          const port = await allocatePort(config.workspacesDir, config.basePort);
+          const { dir, state } = createProjectState(config.workspacesDir, name, concept || name, port);
+          if (tplAnswers.length) {
+            state.clarifyAnswers.push(...tplAnswers);
+            saveState(dir, state);
+          }
+          jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+          if (running || jobQueue.length > 1) {
+            await notify(t(config.lang, 'queued', { pos: jobQueue.length, name: state.name }));
+          }
+          processQueue();
+        } catch (err) {
+          if (err.message !== 'Cancelled by user') await notify(`❌ ${err.message}`);
         }
-        const [name, ...rest] = raw.split('|');
-        const concept = rest.join('|').trim() || name.trim();
-        const port = await allocatePort(config.workspacesDir, config.basePort);
-        const { dir, state } = createProjectState(config.workspacesDir, name.trim(), concept, port);
-        if (tplAnswers.length) {
-          state.clarifyAnswers.push(...tplAnswers);
-          saveState(dir, state);
-        }
-        jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
-        if (running || jobQueue.length > 1) {
-          await notify(`📥 รับงานเข้าคิว (#${jobQueue.length}): ${state.name}`);
-        }
-        processQueue();
         return;
       }
 
-      if (text.startsWith('/continue ')) {
-        const raw = text.slice(10).trim();
-        const [slug, ...rest] = raw.split('|');
-        const dir = path.join(config.workspacesDir, slug.trim());
-        const state = loadState(dir);
-        const instruction = rest.join('|').trim();
-        if (!state || !instruction) {
-          await notify('รูปแบบ: /continue <slug> | <คำสั่งเพิ่มเติม>');
-          return;
+      if (text === '/continue' || text.startsWith('/continue ')) {
+        try {
+          const raw = text.slice(9).trim();
+          let slug = '';
+          let instruction = '';
+          if (raw.includes('|')) {
+            const [s, ...rest] = raw.split('|');
+            slug = s.trim();
+            instruction = rest.join('|').trim();
+          } else if (raw) {
+            const sp = raw.search(/\s+/);
+            if (sp > 0) {
+              slug = raw.slice(0, sp).trim();
+              instruction = raw.slice(sp).trim();
+            } else {
+              slug = raw;
+            }
+          }
+
+          if (!slug) {
+            const projects = listProjects(config.workspacesDir);
+            if (!projects.length) return notify(config.lang === 'en' ? 'No projects yet (/new)' : 'ยังไม่มีโปรเจกต์ครับ (พิมพ์ /new)');
+            slug = await askChoice(
+              config.lang === 'en' ? 'Select project to continue:' : 'เลือกโปรเจกต์ที่ต้องการทำต่อ:',
+              projects.map((p) => p.state.slug),
+              false,
+              { allowCustom: false, allowCancel: true }
+            );
+          }
+
+          const dir = path.join(config.workspacesDir, slug);
+          const state = loadState(dir);
+          if (!state) return notify(`Not found: ${slug}`);
+
+          if (!instruction) {
+            instruction = (await bot.askText(
+              config.lang === 'en'
+                ? `🔧 What should I add or fix in "${state.name}"?`
+                : `🔧 ต้องการให้แก้หรือเพิ่มอะไรใน "${state.name}" พิมพ์ส่งมาได้เลยครับ:`
+            )).trim();
+          }
+
+          jobQueue.push(() => continueProject({ ...loopCtx(dir, state), instruction }));
+          if (running || jobQueue.length > 1) {
+            await notify(t(config.lang, 'queued', { pos: jobQueue.length, name: state.name }));
+          }
+          processQueue();
+        } catch (err) {
+          if (err.message !== 'Cancelled by user') await notify(`❌ ${err.message}`);
         }
-        jobQueue.push(() => continueProject({ ...loopCtx(dir, state), instruction }));
-        if (running || jobQueue.length > 1) {
-          await notify(`📥 รับคำสั่งต่อยอดเข้าคิว (#${jobQueue.length}): ${state.name}`);
-        }
-        processQueue();
       }
     }
   });

@@ -32,8 +32,8 @@ const DICT = {
     askCustomPrompt: '✏️ กรุณาพิมพ์คำตอบของคุณส่งมาในแชทได้เลยครับ',
     helpText: [
       '⚡ DualLoop (ส่งรูป/เสียงเพื่อสร้างได้เลย)',
-      '• /new <name> | <concept> — สร้างโปรเจกต์ใหม่',
-      '• /continue <slug> | <instruction> — ทำต่อจากของเดิม',
+      '• /new (หรือ /new ชื่อ คอนเซ็ปต์) — สร้างโปรเจกต์ใหม่',
+      '• /continue (หรือ /continue slug คำสั่ง) — ทำต่อจากของเดิม',
       '• /status · /questions · /cancel · /resume <slug>',
       '• /app <start|stop> <slug> · /logs <slug> · /delete <slug>',
       '• /model · /lang <th|en> · /export <slug> · (/help all ดูทั้งหมด)'
@@ -82,8 +82,8 @@ const DICT = {
     askCustomPrompt: '✏️ Please type and send your answer in chat.',
     helpText: [
       '⚡ DualLoop (or send a UI photo / voice note)',
-      '• /new <name> | <concept> — New project',
-      '• /continue <slug> | <instruction> — Add feature/fix',
+      '• /new (or /new name concept) — New project',
+      '• /continue (or /continue slug instruction) — Add feature/fix',
       '• /status · /questions · /cancel · /resume <slug>',
       '• /app <start|stop> <slug> · /logs <slug> · /delete <slug>',
       '• /model · /lang <th|en> · /export <slug> · (/help all for full list)'

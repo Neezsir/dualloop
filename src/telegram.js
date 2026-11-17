@@ -95,6 +95,35 @@ export class TelegramController {
     return { qid, promise };
   }
 
+  /**
+   * Prompt the user for free-text input in chat (with Cancel button).
+   */
+  askText(question) {
+    const qid = `q${++this.seq}`;
+    const state = {
+      question,
+      options: [],
+      allowMultiple: false,
+      allowCustom: false,
+      allowCancel: true,
+      selected: new Set(),
+      resolve: null,
+      reject: null
+    };
+    const promise = new Promise((resolve, reject) => {
+      state.resolve = resolve;
+      state.reject = reject;
+    });
+    this.pendingChoices.set(qid, state);
+    this.awaitingTextQid = qid;
+    this.send(question, { reply_markup: this.buildKeyboard(qid, state) })
+      .then((sent) => {
+        if (sent?.message_id) state.messageId = sent.message_id;
+      })
+      .catch(() => {});
+    return promise;
+  }
+
   resolveExternal(qid, answer, isCancel = false) {
     const pending = this.pendingChoices.get(qid);
     if (!pending) return;
