@@ -515,7 +515,8 @@ async function startDaemon() {
     },
     onCommand: async (text) => {
       if (text.startsWith('/start') || text.startsWith('/help')) {
-        await notify(t(config.lang, 'helpText'));
+        const isAll = text.trim() === '/help all';
+        await notify(t(config.lang, isAll ? 'helpAll' : 'helpText'));
         return;
       }
 
@@ -903,6 +904,18 @@ async function startDaemon() {
 
   if (bot) {
     console.log('DualLoop Telegram Bot polling started...');
+    bot.api('setMyCommands', {
+      commands: [
+        { command: 'new', description: 'สร้างโปรเจกต์ใหม่ (/new ชื่อ | คอนเซ็ปต์)' },
+        { command: 'continue', description: 'ทำต่อจากโปรเจกต์เดิม' },
+        { command: 'status', description: 'ดูสถานะโปรเจกต์ & PM2' },
+        { command: 'questions', description: 'ตอบคำถามที่ข้ามไว้' },
+        { command: 'cancel', description: 'ยกเลิกงานและล้างคิว' },
+        { command: 'resume', description: 'ทำต่อจากงานที่ค้าง' },
+        { command: 'lang', description: 'สลับภาษา (th / en)' },
+        { command: 'help', description: 'ดูคำสั่งทั้งหมด' }
+      ]
+    }).catch(() => {});
     await bot.send(t(config.lang, 'botReady', { url: `http://127.0.0.1:${config.dashboardPort}` }));
   } else {
     console.log(`DualLoop Web-only mode running (Dashboard: http://127.0.0.1:${config.dashboardPort})`);
