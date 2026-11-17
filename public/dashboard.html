@@ -6,161 +6,207 @@
   <title>DualLoop Control Dashboard</title>
   <style>
     :root {
-      --bg:#f8fafc; --card:#ffffff; --line:#e2e8f0; --text:#0f172a; --muted:#475569;
-      --input:#f8fafc; --btn:#f1f5f9; --pre:#f1f5f9; --ok:#16a34a; --warn:#d97706; --err:#dc2626; --acc:#0284c7;
+      --bg:#f4f7fb; --card:#ffffff; --card2:#f8fafc; --line:#e2e8f0; --text:#0f172a; --muted:#64748b;
+      --input:#ffffff; --btn:#f1f5f9; --btn-hover:#e2e8f0; --pre:#0f172a; --pre-text:#e2e8f0;
+      --ok:#16a34a; --ok-bg:#dcfce7; --warn:#d97706; --warn-bg:#fef3c7; --err:#dc2626; --err-bg:#fee2e2;
+      --acc:#2563eb; --acc-soft:#eff6ff; --shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
     }
     [data-theme="dark"] {
-      --bg:#0b1020; --card:#131b31; --line:#233054; --text:#e7edf8; --muted:#95a3c3;
-      --input:#0c1324; --btn:#1c294a; --pre:#080c18; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; --acc:#38bdf8;
+      --bg:#080d1a; --card:#10182b; --card2:#152038; --line:#1e2c4a; --text:#f1f5f9; --muted:#94a3b8;
+      --input:#0b1222; --btn:#1a2744; --btn-hover:#23345b; --pre:#060a14; --pre-text:#cbd5e1;
+      --ok:#22c55e; --ok-bg:rgba(34,197,94,.16); --warn:#f59e0b; --warn-bg:rgba(245,158,11,.16); --err:#ef4444; --err-bg:rgba(239,68,68,.16);
+      --acc:#38bdf8; --acc-soft:rgba(56,189,248,.12); --shadow:0 4px 16px rgba(0,0,0,.28);
     }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); padding:20px; transition:background .15s,color .15s; }
-    .wrap { max-width:1200px; margin:0 auto; }
-    header { display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center; margin-bottom:18px; }
-    h1 { margin:0; font-size:22px; }
-    .meta { color:var(--muted); font-size:13px; }
-    .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+    body { margin:0; font-family:'Inter',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); line-height:1.45; transition:background .15s,color .15s; }
+    .topbar { position:sticky; top:0; z-index:20; background:var(--card); border-bottom:1px solid var(--line); padding:12px 24px; backdrop-filter:blur(8px); }
+    .topbar-inner { max-width:1260px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .brand { display:flex; align-items:center; gap:10px; }
+    .logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#2563eb,#06b6d4); color:#fff; display:grid; place-items:center; font-weight:800; font-size:17px; }
+    .brand h1 { margin:0; font-size:18px; letter-spacing:-.02em; }
+    .pill-status { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:3px 10px; border-radius:999px; background:var(--card2); border:1px solid var(--line); color:var(--muted); }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }
+    .dot.busy { background:var(--warn); animation:pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+    .wrap { max-width:1260px; margin:0 auto; padding:20px 24px 40px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:18px; }
+    .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow); }
+    .kpi .k-lbl { font-size:12px; color:var(--muted); font-weight:600; }
+    .kpi .k-val { font-size:20px; font-weight:700; margin-top:4px; }
+
+    .deck { display:grid; grid-template-columns:1.1fr 1fr; gap:16px; margin-bottom:18px; }
+    @media (max-width:920px) { .deck { grid-template-columns:1fr; } }
+
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:var(--shadow); }
+    .card-title { font-size:14px; font-weight:700; margin:0 0 12px; display:flex; justify-content:space-between; align-items:center; }
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-    input, select, button { background:var(--input); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:13px; }
-    input { flex:1; min-width:140px; }
-    button { cursor:pointer; background:var(--btn); font-weight:600; }
-    button:hover { border-color:var(--acc); }
-    button.primary { background:#0284c7; border-color:#0284c7; color:#fff; }
-    button.danger { background:#dc2626; border-color:#dc2626; color:#fff; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
-    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; }
-    .online { background:rgba(22,163,74,.14); color:var(--ok); }
-    .warn { background:rgba(217,119,6,.14); color:var(--warn); }
-    .err { background:rgba(220,38,38,.14); color:var(--err); }
-    img.preview { width:100%; max-height:170px; object-fit:cover; border-radius:8px; border:1px solid var(--line); margin-top:10px; background:var(--pre); }
-    pre { background:var(--pre); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; overflow:auto; max-height:240px; white-space:pre-wrap; }
+    .stack { display:flex; flex-direction:column; gap:10px; }
+    .field-grid { display:grid; grid-template-columns:80px 1fr 1fr; gap:8px; align-items:center; }
+    @media (max-width:560px) { .field-grid { grid-template-columns:1fr; } }
+
+    input, select, textarea, button {
+      font-family:inherit; font-size:13px; border-radius:9px; border:1px solid var(--line);
+      background:var(--input); color:var(--text); padding:8px 11px; transition:border-color .15s,background .15s;
+    }
+    input:focus, select:focus, textarea:focus { outline:none; border-color:var(--acc); }
+    textarea { resize:vertical; min-height:60px; }
+    button { cursor:pointer; background:var(--btn); font-weight:600; display:inline-flex; align-items:center; gap:5px; }
+    button:hover { background:var(--btn-hover); }
+    button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+    button.primary:hover { filter:brightness(1.08); }
+    button.danger { background:var(--err-bg); border-color:transparent; color:var(--err); }
+    button.danger:hover { background:var(--err); color:#fff; }
+    button.sm { padding:5px 9px; font-size:12px; border-radius:7px; }
+    a.nav-link { color:var(--acc); text-decoration:none; font-size:13px; font-weight:600; padding:6px 10px; border-radius:8px; background:var(--acc-soft); }
+
+    .q-banner { background:var(--card); border:2px solid var(--warn); border-radius:14px; padding:16px; margin-bottom:18px; box-shadow:var(--shadow); }
+    .projects-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; }
+    @media (max-width:440px) { .projects-grid { grid-template-columns:1fr; } }
+    .proj { display:flex; flex-direction:column; gap:10px; }
+    .proj-head { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+    .proj-name { font-size:16px; font-weight:700; margin:0; }
+    .proj-sub { font-size:12px; color:var(--muted); margin-top:2px; }
+    .badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; text-transform:uppercase; white-space:nowrap; }
+    .b-ok { background:var(--ok-bg); color:var(--ok); }
+    .b-warn { background:var(--warn-bg); color:var(--warn); }
+    .b-err { background:var(--err-bg); color:var(--err); }
+
+    .stats-strip { display:flex; gap:10px; font-size:12px; color:var(--muted); background:var(--card2); padding:7px 10px; border-radius:8px; border:1px solid var(--line); }
+    .preview-wrap { border-radius:10px; overflow:hidden; border:1px solid var(--line); background:var(--card2); }
+    img.preview { width:100%; height:165px; object-fit:cover; display:block; }
+    .btn-group { display:flex; flex-wrap:wrap; gap:6px; }
+    .btn-group-sep { border-top:1px solid var(--line); padding-top:8px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+
+    .feed-card { margin-top:18px; }
+    pre { margin:0; background:var(--pre); color:var(--pre-text); border-radius:10px; padding:12px; font-size:12px; font-family:'JetBrains Mono',Consolas,monospace; overflow:auto; max-height:220px; white-space:pre-wrap; }
     table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:12px; }
-    th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
-    .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    th, td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); }
+    th { background:var(--card2); font-weight:700; }
+
+    .modal-bg { position:fixed; inset:0; background:rgba(15,23,42,.55); display:none; place-items:center; padding:16px; z-index:50; }
+    .modal { width:min(760px,100%); max-height:85vh; overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+    .toast { position:fixed; right:20px; bottom:20px; background:var(--text); color:var(--bg); padding:10px 15px; border-radius:10px; font-size:13px; font-weight:600; display:none; z-index:60; box-shadow:0 10px 25px rgba(0,0,0,.25); }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <div>
-        <h1>⚡ DualLoop Control Dashboard</h1>
-        <div id="sysMeta" class="meta">Loading...</div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo">⚡</div>
+        <div>
+          <h1>DualLoop</h1>
+          <div class="pill-status"><span id="runDot" class="dot"></span><span id="runText">IDLE</span></div>
+        </div>
       </div>
       <div class="row">
-        <a href="/docs/architecture.html" target="_blank" style="color:var(--acc);font-size:13px;text-decoration:none;font-weight:600;">Architecture Diagram ↗</a>
-        <button id="langBtn" onclick="toggleLang()">🌐 TH</button>
-        <button id="themeBtn" onclick="toggleTheme()">🌙 Dark</button>
-        <button onclick="loadData()">↻ Refresh</button>
-      </div>
-    </header>
-
-    <div class="panel">
-      <div class="row" style="margin-bottom:10px;">
-        <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
-        <input id="appConcept" placeholder="อธิบาย Concept โปรแกรม..." style="flex:2;" />
-        <button id="btnCreate" class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
-      </div>
-      <div class="row" style="border-top:1px solid var(--line);padding-top:10px;">
-        <span class="meta">Backend:</span>
-        <select id="beProv" onchange="syncModels('be')"><option>claude-cli</option><option>agy</option><option>gemini-cli</option><option>codex-cli</option><option>anthropic</option><option>gemini</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
-        <select id="beModelSel" onchange="onModelPick('be')"></select>
-        <input id="beModelCustom" placeholder="Custom Model ID" style="display:none;max-width:170px;" />
-        <span class="meta">Frontend:</span>
-        <select id="feProv" onchange="syncModels('fe')"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>codex-cli</option><option>anthropic</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
-        <select id="feModelSel" onchange="onModelPick('fe')"></select>
-        <input id="feModelCustom" placeholder="Custom Model ID" style="display:none;max-width:170px;" />
-        <label class="meta" style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="autoFb" style="min-width:auto;flex:0;" /> Auto-Fallback</label>
-        <button id="btnSaveAi" onclick="saveAiConfig()">บันทึก AI</button>
+        <a class="nav-link" href="/docs/architecture.html" target="_blank">Architecture ↗</a>
+        <button id="langBtn" class="sm" onclick="toggleLang()">🌐 TH</button>
+        <button id="themeBtn" class="sm" onclick="toggleTheme()">🌙 Dark</button>
+        <button class="sm" onclick="loadData()">↻ Refresh</button>
       </div>
     </div>
+  </header>
 
-    <div id="questionBanner" class="panel" style="display:none;border-color:var(--warn);"></div>
+  <main class="wrap">
+    <section class="kpis">
+      <div class="kpi"><div class="k-lbl" id="lblTotal">โปรเจกต์ทั้งหมด</div><div class="k-val" id="kpiTotal">0</div></div>
+      <div class="kpi"><div class="k-lbl" id="lblOnline">PM2 Online</div><div class="k-val" id="kpiOnline" style="color:var(--ok)">0</div></div>
+      <div class="kpi"><div class="k-lbl" id="lblQueue">คิวงานรอ</div><div class="k-val" id="kpiQueue">0</div></div>
+      <div class="kpi"><div class="k-lbl" id="lblDisk">พื้นที่ Disk</div><div class="k-val" id="kpiDisk" style="font-size:15px;">-</div></div>
+    </section>
 
-    <div id="projectsGrid" class="grid"></div>
-
-    <div id="inspectorBox" class="panel" style="display:none; margin-top:16px;">
-      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
-        <strong id="inspectorTitle">Inspector</strong>
-        <button onclick="document.getElementById('inspectorBox').style.display='none'">ปิด</button>
+    <section class="deck">
+      <div class="card stack">
+        <div class="card-title"><span id="titleNew">🚀 สร้างโปรเจกต์ใหม่</span></div>
+        <div class="row">
+          <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
+          <select id="tplSel" style="max-width:155px;">
+            <option value="">Template: None</option>
+            <option value="crud-sqlite">crud-sqlite</option>
+            <option value="auth-app">auth-app</option>
+            <option value="dashboard">dashboard</option>
+            <option value="landing">landing</option>
+          </select>
+        </div>
+        <textarea id="appConcept" placeholder="อธิบาย Concept, ฟีเจอร์, หรือ Tech Stack ที่ต้องการ..."></textarea>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="btnCreate" class="primary" onclick="createNew()">+ สร้างโปรเจกต์ใหม่</button>
+        </div>
       </div>
-      <div id="inspectorBody"></div>
-    </div>
 
-    <div class="panel" style="margin-top:16px;">
-      <div class="row" style="justify-content:space-between;margin-bottom:8px;">
-        <strong>📡 Live Activity Feed (Phase 1 → 4)</strong>
-        <button onclick="document.getElementById('feedBox').textContent=''">Clear</button>
+      <div class="card stack">
+        <div class="card-title">
+          <span id="titleAi">🤖 ตั้งค่า Dual-AI Engine</span>
+          <label class="pill-status" style="cursor:pointer;"><input type="checkbox" id="autoFb" style="min-width:auto;margin:0;" /> Auto-Fallback</label>
+        </div>
+        <div class="field-grid">
+          <span class="k-lbl">Backend</span>
+          <select id="beProv" onchange="syncModels('be')"><option>claude-cli</option><option>agy</option><option>gemini-cli</option><option>codex-cli</option><option>anthropic</option><option>gemini</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+          <select id="beModelSel" onchange="onModelPick('be')"></select>
+        </div>
+        <input id="beModelCustom" placeholder="Backend Custom Model ID" style="display:none;" />
+        <div class="field-grid">
+          <span class="k-lbl">Frontend</span>
+          <select id="feProv" onchange="syncModels('fe')"><option>agy</option><option>gemini-cli</option><option>gemini</option><option>claude-cli</option><option>codex-cli</option><option>anthropic</option><option>openai</option><option>openrouter</option><option>ollama</option><option>custom</option></select>
+          <select id="feModelSel" onchange="onModelPick('fe')"></select>
+        </div>
+        <input id="feModelCustom" placeholder="Frontend Custom Model ID" style="display:none;" />
+        <div class="row" style="justify-content:flex-end;margin-top:auto;">
+          <button id="btnSaveAi" onclick="saveAiConfig()">บันทึกการตั้งค่า AI</button>
+        </div>
       </div>
-      <pre id="feedBox" style="max-height:190px;"></pre>
+    </section>
+
+    <div id="questionBanner" class="q-banner" style="display:none;"></div>
+
+    <section id="projectsGrid" class="projects-grid"></section>
+
+    <section class="card feed-card">
+      <div class="card-title">
+        <span>📡 Live Activity Feed (Phase 1 → 4)</span>
+        <button class="sm" onclick="document.getElementById('feedBox').textContent=''">Clear</button>
+      </div>
+      <pre id="feedBox"></pre>
+    </section>
+  </main>
+
+  <div id="modalBg" class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="card-title">
+        <span id="modalTitle">Modal</span>
+        <button class="sm" onclick="closeModal()">✕</button>
+      </div>
+      <div id="modalBody"></div>
     </div>
   </div>
+  <div id="toast" class="toast"></div>
 
   <script>
     const UI_TXT = {
       th: {
-        namePh: 'ชื่อโปรเจกต์ (เช่น todo-app)',
-        conceptPh: 'อธิบาย Concept โปรแกรม...',
-        create: '+ สร้างโปรเจกต์ใหม่',
-        saveAi: 'บันทึก AI',
-        savedAi: 'บันทึกค่า AI ชั่วคราวแล้ว',
-        empty: 'ยังไม่มีโปรเจกต์ (สร้างด้านบนหรือพิมพ์ /new ใน Telegram)',
-        qTitle: '❓ คำถามรอคำตอบ:',
-        customBtn: '✏️ พิมพ์ตอบเอง',
-        cancelBtn: '❌ ยกเลิก',
-        contPrompt: 'สั่งแก้/เพิ่มฟีเจอร์ให้',
-        delConfirm: 'ลบ',
-        noDb: 'ไม่พบไฟล์ SQLite (.db)',
-        feedTitle: '📡 Live Activity Feed (Phase 1 → 4)'
+        total: 'โปรเจกต์ทั้งหมด', online: 'PM2 Online', queue: 'คิวงานรอ', disk: 'พื้นที่ Disk',
+        titleNew: '🚀 สร้างโปรเจกต์ใหม่', titleAi: '🤖 ตั้งค่า Dual-AI Engine',
+        namePh: 'ชื่อโปรเจกต์ (เช่น todo-app)', conceptPh: 'อธิบาย Concept, ฟีเจอร์, หรือ Tech Stack ที่ต้องการ...',
+        create: '+ สร้างโปรเจกต์ใหม่', saveAi: 'บันทึกการตั้งค่า AI', savedAi: 'บันทึกค่า AI ชั่วคราวแล้ว',
+        empty: 'ยังไม่มีโปรเจกต์ (สร้างด้านบน หรือพิมพ์ /new ใน Telegram)',
+        qTitle: '❓ คำถามรอคำตอบ:', customBtn: '✏️ พิมพ์ตอบเอง', cancelBtn: '❌ ยกเลิก',
+        contTitle: '➕ ต่อยอด / แก้ไขโปรเจกต์:', contPh: 'ระบุฟีเจอร์ที่อยากเพิ่มหรือจุดที่ต้องการแก้...',
+        contSend: 'ส่งคำสั่งทำต่อ', metaTitle: '⚙️ จัดการ .env & PROJECT_RULES.md:',
+        delConfirm: 'ยืนยันลบโปรเจกต์', noDb: 'ไม่พบไฟล์ SQLite (.db)', running: 'กำลังทำงาน', idle: 'พร้อมรับงาน'
       },
       en: {
-        namePh: 'Project name (e.g. todo-app)',
-        conceptPh: 'Describe your app concept...',
-        create: '+ New Project',
-        saveAi: 'Save AI',
-        savedAi: 'AI config updated for this session',
+        total: 'Total Projects', online: 'PM2 Online', queue: 'Queued Jobs', disk: 'Disk Free',
+        titleNew: '🚀 Create New Project', titleAi: '🤖 Dual-AI Engine Config',
+        namePh: 'Project name (e.g. todo-app)', conceptPh: 'Describe app concept, features, or stack...',
+        create: '+ Create Project', saveAi: 'Save AI Config', savedAi: 'AI config saved for session',
         empty: 'No projects yet (create above or send /new on Telegram)',
-        qTitle: '❓ Pending Question:',
-        customBtn: '✏️ Custom Answer',
-        cancelBtn: '❌ Cancel',
-        contPrompt: 'Describe new feature or fix for',
-        delConfirm: 'Delete',
-        noDb: 'No SQLite (.db) file found',
-        feedTitle: '📡 Live Activity Feed (Phase 1 → 4)'
+        qTitle: '❓ Pending Decision:', customBtn: '✏️ Custom Answer', cancelBtn: '❌ Cancel',
+        contTitle: '➕ Continue / Update Project:', contPh: 'Describe feature to add or issue to fix...',
+        contSend: 'Run Update', metaTitle: '⚙️ Manage .env & PROJECT_RULES.md:',
+        delConfirm: 'Delete project', noDb: 'No SQLite (.db) file found', running: 'RUNNING', idle: 'IDLE'
       }
     };
-    let curLang = localStorage.getItem('dualloop-lang') || 'th';
-    function applyLang(l) {
-      curLang = l === 'en' ? 'en' : 'th';
-      localStorage.setItem('dualloop-lang', curLang);
-      const u = UI_TXT[curLang];
-      document.getElementById('langBtn').textContent = curLang === 'en' ? '🌐 EN' : '🌐 TH';
-      document.getElementById('appName').placeholder = u.namePh;
-      document.getElementById('appConcept').placeholder = u.conceptPh;
-      document.getElementById('btnCreate').textContent = u.create;
-      document.getElementById('btnSaveAi').textContent = u.saveAi;
-    }
-    async function toggleLang() {
-      const next = curLang === 'en' ? 'th' : 'en';
-      applyLang(next);
-      await fetch('/api/lang', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lang: next })
-      });
-      loadData();
-    }
-    applyLang(curLang);
-
-    function applyTheme(t) {
-      document.documentElement.setAttribute('data-theme', t);
-      localStorage.setItem('dualloop-theme', t);
-      document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
-    }
-    function toggleTheme() {
-      const cur = document.documentElement.getAttribute('data-theme') || 'light';
-      applyTheme(cur === 'dark' ? 'light' : 'dark');
-    }
-    applyTheme(localStorage.getItem('dualloop-theme') || 'light');
 
     const MODEL_PRESETS = {
       'claude-cli': ['claude-opus-5-5', 'claude-sonnet-4-20250514'],
@@ -175,29 +221,75 @@
       custom: ['deepseek-chat', 'grok-3']
     };
 
+    let curLang = localStorage.getItem('dualloop-lang') || 'th';
+    function applyLang(l) {
+      curLang = l === 'en' ? 'en' : 'th';
+      localStorage.setItem('dualloop-lang', curLang);
+      const u = UI_TXT[curLang];
+      document.getElementById('langBtn').textContent = curLang === 'en' ? '🌐 EN' : '🌐 TH';
+      document.getElementById('lblTotal').textContent = u.total;
+      document.getElementById('lblOnline').textContent = u.online;
+      document.getElementById('lblQueue').textContent = u.queue;
+      document.getElementById('lblDisk').textContent = u.disk;
+      document.getElementById('titleNew').textContent = u.titleNew;
+      document.getElementById('titleAi').textContent = u.titleAi;
+      document.getElementById('appName').placeholder = u.namePh;
+      document.getElementById('appConcept').placeholder = u.conceptPh;
+      document.getElementById('btnCreate').textContent = u.create;
+      document.getElementById('btnSaveAi').textContent = u.saveAi;
+    }
+
+    async function toggleLang() {
+      const next = curLang === 'en' ? 'th' : 'en';
+      applyLang(next);
+      await fetch('/api/lang', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lang: next }) });
+      loadData();
+    }
+    applyLang(curLang);
+
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('dualloop-theme', t);
+      document.getElementById('themeBtn').textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
+    }
+    function toggleTheme() {
+      applyTheme((document.documentElement.getAttribute('data-theme') || 'light') === 'dark' ? 'light' : 'dark');
+    }
+    applyTheme(localStorage.getItem('dualloop-theme') || 'light');
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 2400);
+    }
+
+    function openModal(title, html) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalBody').innerHTML = html;
+      document.getElementById('modalBg').style.display = 'grid';
+    }
+    function closeModal() { document.getElementById('modalBg').style.display = 'none'; }
+
     function syncModels(side, preferredVal) {
       const prov = document.getElementById(side + 'Prov').value;
       const sel = document.getElementById(side + 'ModelSel');
       const customInp = document.getElementById(side + 'ModelCustom');
       const list = MODEL_PRESETS[prov] || [];
-      sel.innerHTML = list.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('') +
-        '<option value="__custom__">Custom...</option>';
+      sel.innerHTML = list.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('') + '<option value="__custom__">Custom...</option>';
       if (preferredVal && !list.includes(preferredVal)) {
         sel.value = '__custom__';
-        customInp.style.display = 'inline-block';
+        customInp.style.display = 'block';
         customInp.value = preferredVal;
       } else {
         sel.value = preferredVal || list[0] || '__custom__';
-        customInp.style.display = sel.value === '__custom__' ? 'inline-block' : 'none';
+        customInp.style.display = sel.value === '__custom__' ? 'block' : 'none';
       }
     }
-
     function onModelPick(side) {
       const sel = document.getElementById(side + 'ModelSel');
-      const customInp = document.getElementById(side + 'ModelCustom');
-      customInp.style.display = sel.value === '__custom__' ? 'inline-block' : 'none';
+      document.getElementById(side + 'ModelCustom').style.display = sel.value === '__custom__' ? 'block' : 'none';
     }
-
     function getSelectedModel(side) {
       const sel = document.getElementById(side + 'ModelSel').value;
       return sel === '__custom__' ? document.getElementById(side + 'ModelCustom').value.trim() : sel;
@@ -226,7 +318,7 @@
           autoFallback: document.getElementById('autoFb').checked
         })
       });
-      if (r.ok) alert(UI_TXT[curLang].savedAi);
+      if (r.ok) toast(UI_TXT[curLang].savedAi);
     }
 
     async function act(slug, action) {
@@ -236,82 +328,116 @@
         body: JSON.stringify({ slug, action })
       });
       const j = await r.json();
-      if (!r.ok) alert(j.error || 'Failed');
+      if (!r.ok) return toast(j.error || 'Failed');
+      toast(`${action}: ${slug}`);
       loadData();
     }
 
     async function viewLogs(slug) {
       const r = await fetch(`/api/logs/${encodeURIComponent(slug)}`);
       const j = await r.json();
-      document.getElementById('inspectorTitle').textContent = `PM2 Logs: ${slug}`;
-      document.getElementById('inspectorBody').innerHTML = `<pre>${esc(j.logs || '(empty)')}</pre>`;
-      document.getElementById('inspectorBox').style.display = 'block';
+      openModal(`PM2 Logs: ${slug}`, `<pre>${esc(j.logs || '(empty)')}</pre>`);
     }
 
     async function viewDb(slug) {
       const r = await fetch(`/api/db/${encodeURIComponent(slug)}`);
       const j = await r.json();
-      document.getElementById('inspectorTitle').textContent = `🗄️ DB Viewer: ${slug} (${j.dbFile || 'no SQLite'})`;
-      if (!j.found) {
-        document.getElementById('inspectorBody').innerHTML = `<div class="meta">${UI_TXT[curLang].noDb}</div>`;
-      } else {
-        document.getElementById('inspectorBody').innerHTML = j.tables.map(t => {
-          if (!t.rows.length) return `<h4>${esc(t.name)} (0 rows)</h4>`;
-          const cols = Object.keys(t.rows[0]);
-          return `<h4>${esc(t.name)} (${t.rows.length} rows shown)</h4><div style="overflow:auto;"><table><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>` +
-            t.rows.map(row => `<tr>${cols.map(c => `<td>${esc(row[c])}</td>`).join('')}</tr>`).join('') + '</table></div>';
-        }).join('');
-      }
-      document.getElementById('inspectorBox').style.display = 'block';
+      if (!j.found) return openModal(`DB: ${slug}`, `<p class="meta">${UI_TXT[curLang].noDb}</p>`);
+      const html = j.tables.map(t => {
+        if (!t.rows.length) return `<h4>${esc(t.name)} (0 rows)</h4>`;
+        const cols = Object.keys(t.rows[0]);
+        return `<h4>${esc(t.name)} (${t.rows.length})</h4><div style="overflow:auto;"><table><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>` +
+          t.rows.map(row => `<tr>${cols.map(c => `<td>${esc(row[c])}</td>`).join('')}</tr>`).join('') + '</table></div>';
+      }).join('');
+      openModal(`🗄️ ${j.dbFile} (${slug})`, html);
     }
 
-    async function createNew() {
-      const name = document.getElementById('appName').value.trim();
-      const concept = document.getElementById('appConcept').value.trim();
-      if (!name) return alert('กรุณาใส่ชื่อโปรเจกต์');
-      const r = await fetch('/api/new', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, concept: concept || name })
-      });
-      const j = await r.json();
-      if (!r.ok) return alert(j.error || 'Failed');
-      document.getElementById('appName').value = '';
-      document.getElementById('appConcept').value = '';
-      loadData();
+    function openContinue(slug) {
+      const u = UI_TXT[curLang];
+      openModal(`${u.contTitle} ${slug}`, `
+        <div class="stack">
+          <textarea id="contInp" placeholder="${u.contPh}"></textarea>
+          <div class="row" style="justify-content:flex-end;">
+            <button class="primary" onclick="submitContinue('${slug}')">${u.contSend}</button>
+          </div>
+        </div>`);
     }
 
-    async function openContinue(slug) {
-      const instruction = prompt(`${UI_TXT[curLang].contPrompt} ${slug}:`);
+    async function submitContinue(slug) {
+      const instruction = document.getElementById('contInp').value.trim();
       if (!instruction) return;
       const r = await fetch('/api/continue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ slug, instruction })
       });
-      if (!r.ok) alert('Failed');
+      closeModal();
+      if (r.ok) toast(`Queued update: ${slug}`);
       loadData();
     }
 
     async function openMeta(slug) {
       const r = await fetch(`/api/project-meta/${encodeURIComponent(slug)}`);
       const j = await r.json();
-      const input = prompt(
-        `[${slug}]\n.env:\n${j.envMasked}\n\nRules:\n${j.rules || '(none)'}\n\nพิมพ์ KEY=VALUE เพื่อแก้ .env หรือ rule:ข้อความ เพื่อเพิ่มกฎ:`
-      );
-      if (!input) return;
-      const body = { slug };
-      if (input.startsWith('rule:')) body.rule = input.slice(5).trim();
-      else if (input.includes('=')) {
-        const eq = input.indexOf('=');
-        body.envKey = input.slice(0, eq).trim();
-        body.envVal = input.slice(eq + 1).trim();
-      } else body.rule = input;
+      openModal(`${UI_TXT[curLang].metaTitle} ${slug}`, `
+        <div class="stack">
+          <div class="k-lbl">.env (masked)</div>
+          <pre>${esc(j.envMasked)}</pre>
+          <div class="row">
+            <input id="envKeyInp" placeholder="KEY" style="max-width:160px;" />
+            <input id="envValInp" placeholder="VALUE" />
+            <button onclick="saveEnvKey('${slug}')">Update .env</button>
+          </div>
+          <div class="k-lbl">PROJECT_RULES.md</div>
+          <pre>${esc(j.rules || '(none)')}</pre>
+          <div class="row">
+            <input id="ruleInp" placeholder="Add project rule..." />
+            <button onclick="saveRule('${slug}')">Add Rule</button>
+          </div>
+        </div>`);
+    }
+
+    async function saveEnvKey(slug) {
+      const envKey = document.getElementById('envKeyInp').value.trim();
+      const envVal = document.getElementById('envValInp').value.trim();
+      if (!envKey) return;
       await fetch('/api/project-meta', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ slug, envKey, envVal })
       });
+      toast('.env updated & PM2 restarted');
+      openMeta(slug);
+    }
+
+    async function saveRule(slug) {
+      const rule = document.getElementById('ruleInp').value.trim();
+      if (!rule) return;
+      await fetch('/api/project-meta', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug, rule })
+      });
+      toast('Rule added');
+      openMeta(slug);
+    }
+
+    async function createNew() {
+      const name = document.getElementById('appName').value.trim();
+      const tpl = document.getElementById('tplSel').value;
+      let concept = document.getElementById('appConcept').value.trim() || name;
+      if (!name) return toast('Name required');
+      if (tpl) concept = `[Template: ${tpl}] ${concept}`;
+      const r = await fetch('/api/new', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, concept })
+      });
+      const j = await r.json();
+      if (!r.ok) return toast(j.error || 'Failed');
+      document.getElementById('appName').value = '';
+      document.getElementById('appConcept').value = '';
+      toast(`Queued: ${j.slug}`);
       loadData();
     }
 
@@ -321,19 +447,20 @@
       const box = document.getElementById('questionBanner');
       if (!activeQuestion) { box.style.display = 'none'; return; }
       const q = activeQuestion;
+      const u = UI_TXT[curLang];
       box.style.display = 'block';
       const opts = q.options.map((o, i) =>
         q.allowMultiple
-          ? `<label style="display:block;margin:4px 0;"><input type="checkbox" name="qopt" value="${esc(o)}"/> ${esc(o)}</label>`
+          ? `<label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" name="qopt" value="${esc(o)}" style="min-width:auto;"/> ${esc(o)}</label>`
           : `<button class="primary" onclick="submitWebAns('${q.id}', ${i})">${esc(o)}</button>`
       ).join(' ');
       box.innerHTML = `
-        <div style="margin-bottom:8px;"><strong>${UI_TXT[curLang].qTitle}</strong> ${esc(q.question)}</div>
+        <div style="margin-bottom:10px;font-weight:700;">${u.qTitle} ${esc(q.question)}</div>
         <div class="row" style="gap:8px;">
           ${opts}
           ${q.allowMultiple ? `<button class="primary" onclick="submitWebMulti('${q.id}')">Submit</button>` : ''}
-          ${q.allowCustom ? `<button onclick="submitWebCustom('${q.id}')">${UI_TXT[curLang].customBtn}</button>` : ''}
-          ${q.allowCancel ? `<button class="danger" onclick="submitWebCancel('${q.id}')">${UI_TXT[curLang].cancelBtn}</button>` : ''}
+          ${q.allowCustom ? `<button onclick="submitWebCustom('${q.id}')">${u.customBtn}</button>` : ''}
+          ${q.allowCancel ? `<button class="danger" onclick="submitWebCancel('${q.id}')">${u.cancelBtn}</button>` : ''}
         </div>`;
     }
 
@@ -351,8 +478,14 @@
       sendWebAns(id, vals.length ? vals.join(', ') : activeQuestion.options[0]);
     }
     function submitWebCustom(id) {
-      const txt = prompt(activeQuestion.question);
-      if (txt) sendWebAns(id, txt);
+      openModal(UI_TXT[curLang].customBtn, `
+        <div class="stack">
+          <div>${esc(activeQuestion.question)}</div>
+          <input id="customAnsInp" />
+          <div class="row" style="justify-content:flex-end;">
+            <button class="primary" onclick="const v=document.getElementById('customAnsInp').value.trim();if(v){closeModal();sendWebAns('${id}',v);}">OK</button>
+          </div>
+        </div>`);
     }
     function submitWebCancel(id) { sendWebAns(id, '', true); }
 
@@ -361,43 +494,61 @@
       const data = await res.json();
       if (data.lang && data.lang !== curLang) applyLang(data.lang);
       renderQuestions(data.pendingQuestions || []);
-      document.getElementById('sysMeta').textContent =
-        `Queue: ${data.queueSize} | Running: ${data.running ? 'YES' : 'IDLE'} | Disk: ${data.disk} | Updated: ${new Date().toLocaleTimeString()}`;
+
+      const onlineCount = data.projects.filter(p => p.pm2Status === 'online').length;
+      document.getElementById('kpiTotal').textContent = data.projects.length;
+      document.getElementById('kpiOnline').textContent = onlineCount;
+      document.getElementById('kpiQueue').textContent = data.queueSize;
+      document.getElementById('kpiDisk').textContent = data.disk || '-';
+
+      const dot = document.getElementById('runDot');
+      dot.className = data.running ? 'dot busy' : 'dot';
+      document.getElementById('runText').textContent = data.running ? UI_TXT[curLang].running : UI_TXT[curLang].idle;
 
       const grid = document.getElementById('projectsGrid');
       if (!data.projects.length) {
-        grid.innerHTML = `<div class="panel">${UI_TXT[curLang].empty}</div>`;
+        grid.innerHTML = `<div class="card">${UI_TXT[curLang].empty}</div>`;
         return;
       }
 
       grid.innerHTML = data.projects.map(p => {
-        const cls = p.pm2Status === 'online' ? 'online' : (p.phase === 'error' ? 'err' : 'warn');
+        const cls = p.pm2Status === 'online' ? 'b-ok' : (p.phase === 'error' ? 'b-err' : 'b-warn');
         return `
-          <div class="panel">
-            <div class="row" style="justify-content:space-between;">
-              <strong>${esc(p.name)}</strong>
-              <span class="badge ${cls}">${esc(p.phase)} / ${esc(p.pm2Status)}</span>
+          <article class="card proj">
+            <div class="proj-head">
+              <div>
+                <h3 class="proj-name">${esc(p.name)}</h3>
+                <div class="proj-sub"><code>${esc(p.slug)}</code> · <a href="http://127.0.0.1:${p.port}" target="_blank" style="color:var(--acc);text-decoration:none;font-weight:600;">:${p.port} ↗</a></div>
+              </div>
+              <span class="badge ${cls}">${esc(p.phase)} · ${esc(p.pm2Status)}</span>
             </div>
-            <div class="meta" style="margin:6px 0;">
-              Slug: <code>${esc(p.slug)}</code> · Port: <a href="http://127.0.0.1:${p.port}" target="_blank" style="color:var(--acc)">${p.port}</a><br/>
-              BE calls: ${p.metrics?.aiCalls?.backend || 0} · FE calls: ${p.metrics?.aiCalls?.frontend || 0} · Fix: ${p.metrics?.totalFixLoops || 0}
+            <div class="stats-strip">
+              <span>BE: <strong>${p.metrics?.aiCalls?.backend || 0}</strong></span>
+              <span>FE: <strong>${p.metrics?.aiCalls?.frontend || 0}</strong></span>
+              <span>Fix: <strong>${p.metrics?.totalFixLoops || 0}</strong></span>
             </div>
-            ${p.hasPreview ? `<img class="preview" src="/api/preview/${encodeURIComponent(p.slug)}?t=${Date.now()}" alt="preview"/>` : ''}
-            <div class="actions">
-              <button onclick="act('${p.slug}','restart')">Restart</button>
-              <button onclick="act('${p.slug}','stop')">Stop</button>
-              <button onclick="act('${p.slug}','resume')">Resume</button>
-              <button onclick="openContinue('${p.slug}')">+ Continue</button>
-              <button onclick="viewDb('${p.slug}')">DB</button>
-              <button onclick="openMeta('${p.slug}')">Env &amp; Rules</button>
-              <button onclick="viewLogs('${p.slug}')">Logs</button>
-              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/architecture.html','_blank')">Flow/Docs</button>
-              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/api-tester.html','_blank')">API Tester</button>
-              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/test-report.html','_blank')">Test Report</button>
-              <button onclick="act('${p.slug}','rollback')">Rollback</button>
-              <button class="danger" onclick="if(confirm('${UI_TXT[curLang].delConfirm} ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
+            ${p.hasPreview ? `<div class="preview-wrap"><img class="preview" src="/api/preview/${encodeURIComponent(p.slug)}?t=${Date.now()}" alt="preview"/></div>` : ''}
+            <div class="btn-group">
+              <button class="sm" onclick="act('${p.slug}','restart')">Restart</button>
+              <button class="sm" onclick="act('${p.slug}','stop')">Stop</button>
+              <button class="sm" onclick="act('${p.slug}','resume')">Resume</button>
+              <button class="sm primary" onclick="openContinue('${p.slug}')">+ Continue</button>
             </div>
-          </div>`;
+            <div class="btn-group-sep">
+              <div class="btn-group">
+                <button class="sm" onclick="viewDb('${p.slug}')">DB</button>
+                <button class="sm" onclick="openMeta('${p.slug}')">Env &amp; Rules</button>
+                <button class="sm" onclick="viewLogs('${p.slug}')">Logs</button>
+                <button class="sm" onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/architecture.html','_blank')">Flow/Docs</button>
+                <button class="sm" onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/api-tester.html','_blank')">API Tester</button>
+                <button class="sm" onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/test-report.html','_blank')">Test Report</button>
+              </div>
+              <div class="btn-group">
+                <button class="sm" onclick="act('${p.slug}','rollback')">Rollback</button>
+                <button class="sm danger" onclick="if(confirm('${UI_TXT[curLang].delConfirm} ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
+              </div>
+            </div>
+          </article>`;
       }).join('');
     }
 
