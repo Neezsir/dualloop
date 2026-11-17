@@ -32,6 +32,9 @@ pm2 start ecosystem.config.cjs
 - `/status` — Show project states, job queue & PM2 status
 - `/logs <slug>` — Tail PM2 logs
 - `/model <backend|frontend> [provider] <model-id>` — Switch provider/model live
+- `/export <slug>` — Export project `.zip` to chat or push to GitHub repo
+- `/stats` — View build duration, AI call counts & fix loops
+- `/update` — Self-update DualLoop via `git pull` & restart PM2
 - `/rollback <slug>` — Reset to last Git checkpoint + DB snapshot
 - `/delete <slug>` — Stop PM2 and remove project folder
 

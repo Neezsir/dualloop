@@ -122,6 +122,38 @@ export function restoreDbSnapshot(dir) {
 }
 
 /**
+ * Create a clean zip archive of the project (excluding node_modules, .git, backups) in temp dir.
+ */
+export function exportProjectZip(dir, slug) {
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'dualloop-stage-'));
+  const outZip = path.join(os.tmpdir(), `${slug}-${Date.now()}.zip`);
+  const copyClean = (src, dst) => {
+    fs.mkdirSync(dst, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+      if (['node_modules', '.git', '.dualloop-backup'].includes(entry.name)) continue;
+      const s = path.join(src, entry.name);
+      const d = path.join(dst, entry.name);
+      if (entry.isDirectory()) copyClean(s, d);
+      else fs.copyFileSync(s, d);
+    }
+  };
+  try {
+    copyClean(dir, stage);
+    const cmd =
+      process.platform === 'win32'
+        ? `powershell -NoProfile -Command "Compress-Archive -Path '${stage}\\*' -DestinationPath '${outZip}' -Force"`
+        : `cd "${stage}" && zip -rq "${outZip}" .`;
+    const res = runCmd(cmd, stage, 60000);
+    if (!res.ok || !fs.existsSync(outZip)) {
+      throw new Error(`Zip export failed: ${res.output}`);
+    }
+    return outZip;
+  } finally {
+    try { fs.rmSync(stage, { recursive: true, force: true }); } catch {}
+  }
+}
+
+/**
  * Stop PM2 process and delete project directory safely.
  */
 export function deleteProject(dir, state) {
@@ -283,18 +315,29 @@ async function probeFrontendBrowser(url, screenshotPath) {
     await send('Page.enable');
     await send('Runtime.enable');
     await send('Network.enable');
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
     await send('Page.navigate', { url });
     await Promise.race([loaded, new Promise((r) => setTimeout(r, 6000))]);
     await new Promise((r) => setTimeout(r, 800));
 
-    const domCheck = await send('Runtime.evaluate', {
-      expression: '({ textLen: document.body ? document.body.innerText.trim().length : 0, nodes: document.querySelectorAll("*").length })',
-      returnByValue: true
-    });
-    const val = domCheck.result?.value || { textLen: 0, nodes: 0 };
-    if (val.textLen === 0 && val.nodes < 4) {
-      errors.push('Blank UI rendered (empty DOM)');
-    }
+    const checkViewport = async (label) => {
+      const r = await send('Runtime.evaluate', {
+        expression: '({ textLen: document.body ? document.body.innerText.trim().length : 0, nodes: document.querySelectorAll("*").length, sw: document.documentElement.scrollWidth, iw: window.innerWidth })',
+        returnByValue: true
+      });
+      const v = r.result?.value || { textLen: 0, nodes: 0, sw: 0, iw: 0 };
+      if (v.textLen === 0 && v.nodes < 4) errors.push(`${label}: Blank UI rendered (empty DOM)`);
+      if (v.iw > 0 && v.sw > v.iw + 4) {
+        errors.push(`${label}: Horizontal layout overflow (${v.sw}px > ${v.iw}px)`);
+      }
+    };
+
+    await checkViewport('Desktop 1280px');
 
     let hasScreenshot = false;
     if (screenshotPath) {
@@ -306,6 +349,16 @@ async function probeFrontendBrowser(url, screenshotPath) {
         }
       } catch {}
     }
+
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true
+    });
+    await new Promise((r) => setTimeout(r, 350));
+    await checkViewport('Mobile 390px');
+    await send('Emulation.clearDeviceMetricsOverride').catch(() => {});
 
     return errors.length
       ? { ok: false, error: errors.slice(0, 6).join('\n'), screenshotPath: hasScreenshot ? screenshotPath : null }

@@ -35,20 +35,28 @@ export class TelegramController {
     });
   }
 
-  async sendPhoto(filePath, caption = '') {
+  async sendMedia(endpoint, field, filePath, filename, mime, caption = '') {
     if (!this.token || !this.chatId || !filePath || !fs.existsSync(filePath)) return null;
     const form = new FormData();
     form.append('chat_id', this.chatId);
     if (caption) form.append('caption', String(caption).slice(0, 1000));
-    form.append('photo', new Blob([fs.readFileSync(filePath)], { type: 'image/png' }), 'preview.png');
+    form.append(field, new Blob([fs.readFileSync(filePath)], { type: mime }), filename);
 
-    const res = await fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, {
+    const res = await fetch(`https://api.telegram.org/bot${this.token}/${endpoint}`, {
       method: 'POST',
       body: form
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(`Telegram sendPhoto: ${data.description}`);
+    if (!data.ok) throw new Error(`Telegram ${endpoint}: ${data.description}`);
     return data.result;
+  }
+
+  sendPhoto(filePath, caption = '') {
+    return this.sendMedia('sendPhoto', 'photo', filePath, 'preview.png', 'image/png', caption);
+  }
+
+  sendDocument(filePath, filename = 'project.zip', caption = '') {
+    return this.sendMedia('sendDocument', 'document', filePath, filename, 'application/zip', caption);
   }
 
   /**

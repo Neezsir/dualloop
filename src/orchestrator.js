@@ -6,6 +6,7 @@ import {
   appendHistory,
   buildCompressedContext,
   createProjectState,
+  ensureMetrics,
   listProjects,
   loadState,
   saveState
@@ -15,6 +16,7 @@ import {
   allocatePort,
   applyFileChanges,
   deleteProject,
+  exportProjectZip,
   gitCheckpoint,
   gitRollback,
   runCmd,
@@ -22,6 +24,13 @@ import {
   verifyProject
 } from './runner.js';
 import { TelegramController } from './telegram.js';
+
+const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function formatDuration(startIso, endIso) {
+  const sec = Math.max(1, Math.round((new Date(endIso) - new Date(startIso)) / 1000));
+  return sec >= 60 ? `${Math.floor(sec / 60)}m ${sec % 60}s` : `${sec}s`;
+}
 
 function previewUrls(port, config) {
   const local = `http://127.0.0.1:${port}`;
@@ -53,6 +62,7 @@ export async function runProjectLoop({
     }
     while (state.phase === 'clarify') {
       checkAbort(shouldCancel);
+      ensureMetrics(state).aiCalls.backend += 1;
       const res = await clarifyStep(state, config);
       checkAbort(shouldCancel);
 
@@ -120,6 +130,7 @@ export async function runProjectLoop({
         );
 
         const context = buildCompressedContext(dir, state);
+        ensureMetrics(state).aiCalls[isFe ? 'frontend' : 'backend'] += 1;
         const res = await executeTask({ task, state, context, config });
         checkAbort(shouldCancel);
 
@@ -186,13 +197,17 @@ export async function runProjectLoop({
       });
 
       if (check.ok) {
+        const m = ensureMetrics(state);
+        m.finishedAt = new Date().toISOString();
         state.phase = state.blockedQuestions.length ? 'waiting_decisions' : 'done';
         appendHistory(state, 'Verified & online via PM2');
         saveState(dir, state);
+        const dur = formatDuration(m.startedAt, m.finishedAt);
         const doneMsg =
           `🎉 [เสร็จสมบูรณ์ 4/4] ${state.name}\n` +
           `PM2: ${state.pm2Name} (online)\n` +
           `🔗 URL: ${previewUrls(state.port, config)}\n` +
+          `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}\n` +
           `📂 Path: ${dir}` +
           (state.blockedQuestions.length
             ? `\n\n⚠️ มี ${state.blockedQuestions.length} คำถามที่ข้ามไว้ (พิมพ์ /questions เพื่อตอบ)`
@@ -232,8 +247,10 @@ export async function runProjectLoop({
       }
 
       state.fixLoops += 1;
+      ensureMetrics(state).totalFixLoops += 1;
       saveState(dir, state);
       const targetRole = check.layer === 'frontend' ? 'frontend' : 'backend';
+      ensureMetrics(state).aiCalls[targetRole] += 1;
       await notify(
         `❌ [Phase 4/4: Verify ไม่ผ่าน — รอบแก้ ${state.fixLoops}/${config.maxFixLoops}]\n` +
           `Layer: ${check.layer}\nสาเหตุ: ${check.error.slice(0, 350)}\n` +
@@ -363,10 +380,62 @@ async function startDaemon() {
             '/status — สถานะโปรเจกต์ + คิว + PM2',
             '/logs <slug> — ดู log ล่าสุด',
             '/model <backend|frontend> [provider] <model-id> — สลับโมเดล/ค่าย',
+            '/export <slug> — ส่งออก .zip หรือขึ้น GitHub',
+            '/stats — สรุปเวลาและจำนวนรอบ AI ของแต่ละโปรเจกต์',
+            '/update — อัปเดต DualLoop จาก GitHub + รีสตาร์ต PM2',
             '/rollback <slug> — ย้อน Checkpoint + DB Snapshot',
             '/delete <slug> — หยุด PM2 และลบโปรเจกต์'
           ].join('\n')
         );
+        return;
+      }
+
+      if (text.startsWith('/stats')) {
+        const projects = listProjects(config.workspacesDir);
+        if (!projects.length) return notify('ยังไม่มีโปรเจกต์ครับ');
+        const lines = projects.map(({ state: s }) => {
+          const m = ensureMetrics(s);
+          const dur = m.finishedAt ? formatDuration(m.startedAt, m.finishedAt) : 'in-progress';
+          return `• ${s.slug} (${s.phase}) | ${dur} | BE:${m.aiCalls.backend} FE:${m.aiCalls.frontend} Fix:${m.totalFixLoops}`;
+        });
+        await notify(`📊 Project Stats:\n${lines.join('\n')}`);
+        return;
+      }
+
+      if (text.startsWith('/update')) {
+        await notify('🔄 กำลังดึงโค้ดล่าสุด (`git pull`)...');
+        const pull = runCmd('git pull --ff-only', APP_ROOT, 60000);
+        if (!pull.ok) return notify(`❌ git pull failed:\n${pull.output}`);
+        if (/Already up to date/i.test(pull.output)) {
+          return notify(`✅ เป็นเวอร์ชันล่าสุดอยู่แล้ว\n${pull.output}`);
+        }
+        await notify(`✅ อัปเดตแล้ว:\n${pull.output}\n⏳ กำลังรีสตาร์ต PM2...`);
+        setTimeout(() => runCmd('pm2 restart dualloop --update-env', APP_ROOT), 500);
+        return;
+      }
+
+      if (text.startsWith('/export')) {
+        const slug = text.replace('/export', '').trim();
+        const dir = path.join(config.workspacesDir, slug);
+        const state = loadState(dir);
+        if (!state) return notify(`Not found: ${slug}`);
+        const mode = await askChoice(
+          `📦 ต้องการส่งออก "${state.name}" แบบไหน?`,
+          ['📦 ส่งไฟล์ .zip เข้าแชท', '🐙 สร้าง Private Repo บน GitHub (gh)'],
+          false,
+          { allowCustom: false, allowCancel: false }
+        );
+        if (mode.includes('.zip')) {
+          const zipPath = exportProjectZip(dir, state.slug);
+          try {
+            await bot.sendDocument(zipPath, `${state.slug}.zip`, `📦 Export: ${state.name}`);
+          } finally {
+            try { fs.unlinkSync(zipPath); } catch {}
+          }
+          return;
+        }
+        const ghRes = runCmd(`gh repo create ${state.slug} --private --source=. --push`, dir, 60000);
+        await notify(ghRes.ok ? `🐙 Push ขึ้น GitHub แล้ว:\n${ghRes.output}` : `❌ GitHub export failed:\n${ghRes.output}`);
         return;
       }
 

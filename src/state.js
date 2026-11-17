@@ -34,6 +34,12 @@ export function createProjectState(workspacesDir, name, concept, port) {
     blockedQuestions: [],
     fixLoops: 0,
     lastCheckpoint: null,
+    metrics: {
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      aiCalls: { backend: 0, frontend: 0 },
+      totalFixLoops: 0
+    },
     history: [],
     updatedAt: new Date().toISOString()
   };
@@ -42,10 +48,24 @@ export function createProjectState(workspacesDir, name, concept, port) {
   return { dir, state };
 }
 
+export function ensureMetrics(state) {
+  if (!state.metrics) {
+    state.metrics = {
+      startedAt: state.updatedAt || new Date().toISOString(),
+      finishedAt: null,
+      aiCalls: { backend: 0, frontend: 0 },
+      totalFixLoops: state.fixLoops || 0
+    };
+  }
+  return state.metrics;
+}
+
 export function loadState(dir) {
   const file = path.join(dir, STATE_FILE);
   if (!fs.existsSync(file)) return null;
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
+  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  ensureMetrics(state);
+  return state;
 }
 
 export function saveState(dir, state) {
