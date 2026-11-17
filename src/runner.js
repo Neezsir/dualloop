@@ -54,7 +54,71 @@ export function gitCheckpoint(dir, message) {
 
 export function gitRollback(dir, hash) {
   if (!hash) return { ok: false, output: 'No checkpoint hash found' };
-  return runCmd(`git reset --hard ${hash}`, dir);
+  const res = runCmd(`git reset --hard ${hash}`, dir);
+  restoreDbSnapshot(dir);
+  return res;
+}
+
+/**
+ * Backup SQLite/DB files to .dualloop-backup before build/continue.
+ */
+export function snapshotDbs(dir) {
+  const backupDir = path.join(dir, '.dualloop-backup');
+  let count = 0;
+  const walk = (cur) => {
+    for (const entry of fs.readdirSync(cur, { withFileTypes: true })) {
+      if (['node_modules', '.git', '.dualloop-backup'].includes(entry.name)) continue;
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (/\.(db|sqlite|sqlite3)$/i.test(entry.name)) {
+        const rel = path.relative(dir, full);
+        const dest = path.join(backupDir, rel);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(full, dest);
+        count++;
+      }
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return count;
+}
+
+/**
+ * Restore backed up DB files on rollback.
+ */
+export function restoreDbSnapshot(dir) {
+  const backupDir = path.join(dir, '.dualloop-backup');
+  if (!fs.existsSync(backupDir)) return 0;
+  let count = 0;
+  const walk = (cur) => {
+    for (const entry of fs.readdirSync(cur, { withFileTypes: true })) {
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else {
+        const rel = path.relative(backupDir, full);
+        const dest = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(full, dest);
+        count++;
+      }
+    }
+  };
+  walk(backupDir);
+  return count;
+}
+
+/**
+ * Stop PM2 process and delete project directory safely.
+ */
+export function deleteProject(dir, state) {
+  if (!fs.existsSync(path.join(dir, 'STATE.json'))) {
+    throw new Error('Refusing to delete directory without STATE.json');
+  }
+  runCmd(`pm2 delete ${state.pm2Name}`, dir);
+  runCmd('pm2 save', dir);
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /**
@@ -278,13 +342,15 @@ export function runSecurityCheck(dir) {
 /**
  * Verify all 4 layers: PM2 runtime, Security, DB/API tests, API contract endpoints, and Frontend DOM/JS/Network.
  */
-export async function verifyProject(dir, state) {
+export async function verifyProject(dir, state, onStep = () => {}) {
+  await onStep('1/4 ตรวจ Security Baseline (Secrets & SQL)...');
   const sec = runSecurityCheck(dir);
   if (!sec.ok) {
     return { ok: false, layer: 'backend', error: sec.error };
   }
 
   // 1. PM2 Runtime check
+  await onStep(`2/4 รัน PM2 (${state.pm2Name} บน Port ${state.port})...`);
   const pm2Res = startOrReloadPm2(dir, state);
   if (!pm2Res.ok) {
     return { ok: false, layer: 'backend', error: `PM2 start failed:\n${pm2Res.output}` };
@@ -304,6 +370,7 @@ export async function verifyProject(dir, state) {
   }
 
   // 2. DB & Backend API test suite
+  await onStep(`3/4 เทส DB & API (${state.testCommand || 'HTTP endpoints'})...`);
   if (state.testCommand) {
     const testRes = runCmd(state.testCommand, dir, 90000);
     if (!testRes.ok) {
@@ -353,6 +420,7 @@ export async function verifyProject(dir, state) {
   }
 
   // 4. Frontend E2E & Real Headless Browser Probe (JS exceptions, console.error, failed fetch)
+  await onStep('4/4 เทส Frontend UI, Assets & Headless Browser...');
   if (state.e2eCommand) {
     const e2eRes = runCmd(state.e2eCommand, dir, 90000);
     if (!e2eRes.ok) {

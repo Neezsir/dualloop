@@ -14,25 +14,40 @@ import { clarifyStep, executeTask } from './ai.js';
 import {
   allocatePort,
   applyFileChanges,
+  deleteProject,
   gitCheckpoint,
   gitRollback,
   runCmd,
+  snapshotDbs,
   verifyProject
 } from './runner.js';
 import { TelegramController } from './telegram.js';
+
+function previewUrls(port, config) {
+  const local = `http://127.0.0.1:${port}`;
+  if (!config.publicHost) return local;
+  const pub = config.publicHost.includes('://') ? `${config.publicHost}:${port}` : `http://${config.publicHost}:${port}`;
+  return `${local}\n🌐 Public: ${pub}`;
+}
 
 /**
  * Run one complete clarify -> build (skip-on-block) -> verify/fix loop for a project.
  */
 export async function runProjectLoop({ dir, state, config, notify, askChoice }) {
   try {
-    // 1. Clarify phase (grill-me + ponytail choice-only)
+    // Phase 1: Clarify (grill-me + ponytail choice-only)
+    if (state.phase === 'clarify') {
+      await notify(`🔎 [Phase 1/4: Clarify] ${state.name}\nกำลังวิเคราะห์ Concept และวางคำถามสเปก...`);
+    }
     while (state.phase === 'clarify') {
-      await notify(`[${state.name}] วิเคราะห์สเปก...`);
       const res = await clarifyStep(state, config);
 
       if (!res.done) {
-        const answer = await askChoice(res.question, res.options, Boolean(res.allowMultiple));
+        const answer = await askChoice(
+          `❓ [Phase 1/4: Clarify — ${state.name}]\n${res.question}`,
+          res.options,
+          Boolean(res.allowMultiple)
+        );
         state.clarifyAnswers.push({ question: res.question, answer });
         saveState(dir, state);
         continue;
@@ -54,38 +69,58 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
       state.phase = 'build';
       appendHistory(state, 'Spec & contracts locked');
       saveState(dir, state);
-      await notify(`[${state.name}] ล็อกสเปกเรียบร้อย (${state.tasks.length} tasks)`);
+      await notify(
+        `✅ [Phase 1/4 เสร็จสิ้น] ${state.name}\n` +
+          `ล็อก SPEC.md, DB_SCHEMA.sql, API_CONTRACT.json แล้ว (${state.tasks.length} tasks)\n` +
+          `📂 โฟลเดอร์: ${dir}`
+      );
     }
 
-    // 2. Build phase (Dual-AI + Git Checkpoint + Skip-on-Block)
+    // Phase 2 & 3: Checkpoint + Build (Dual-AI + Skip-on-Block)
     if (state.phase === 'build') {
+      const dbCount = snapshotDbs(dir);
       const cp = gitCheckpoint(dir, `checkpoint-${Date.now()}`);
       if (cp.hash) state.lastCheckpoint = cp.hash;
       saveState(dir, state);
+      await notify(
+        `💾 [Phase 2/4: Checkpoint] ${state.name}\n` +
+          `Git: ${cp.hash || 'no-git'} | DB Snapshot: ${dbCount} ไฟล์`
+      );
 
       let guardSynced = false;
+      const totalTasks = state.tasks.length;
       while (true) {
-        const task = state.tasks.find((t) => t.status === 'pending');
-        if (!task) break;
+        const idx = state.tasks.findIndex((t) => t.status === 'pending');
+        if (idx === -1) break;
+        const task = state.tasks[idx];
+        const isFe = task.role === 'frontend' || task.role === 'gemini';
+        const aiTag = isFe
+          ? `Frontend (${config.frontendProvider}/${config.frontendModel})`
+          : `Backend (${config.backendProvider}/${config.backendModel})`;
 
-        await notify(`[${state.name}] ${task.role.toUpperCase()} กำลังทำ: ${task.title}`);
+        await notify(
+          `⚙️ [Phase 3/4: Build (${idx + 1}/${totalTasks})] ${state.name}\n` +
+            `AI: ${aiTag}\nงาน: ${task.title}`
+        );
+
         const context = buildCompressedContext(dir, state);
         const res = await executeTask({ task, state, context, config });
 
         if (res.status === 'blocked') {
           task.status = 'blocked';
-          state.blockedQuestions.push({
-            taskId: task.id,
-            ...res.blockQuestion
-          });
+          state.blockedQuestions.push({ taskId: task.id, ...res.blockQuestion });
           appendHistory(state, `Blocked task ${task.id}: ${res.blockQuestion?.question}`);
           saveState(dir, state);
-          await notify(`[${state.name}] ติดการตัดสินใจใน "${task.title}" -> ข้ามไปทำส่วนอื่นต่อก่อน`);
+          await notify(
+            `⏸️ [Phase 3/4: Skip-on-Block] ${state.name}\n` +
+              `งาน "${task.title}" ติดรอตัดสินใจ -> เก็บคำถามไว้และข้ามไปทำส่วนอื่นต่อ`
+          );
           continue;
         }
 
         applyFileChanges(dir, res.files, res.deleteFiles);
         for (const cmd of res.setupCommands || []) {
+          await notify(`📦 [Phase 3/4: Setup] รันคำสั่ง: ${cmd}`);
           const cmdRes = runCmd(cmd, dir, 120000);
           if (!cmdRes.ok) throw new Error(`Setup command failed (${cmd}): ${cmdRes.output}`);
         }
@@ -93,22 +128,31 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
         if (res.testCommand) state.testCommand = res.testCommand;
         if (res.e2eCommand) state.e2eCommand = res.e2eCommand;
 
-        // Schema Guard: if contract/DB changed, re-sync opposite track once
         const touchedContract = (res.files || []).some((f) =>
           /API_CONTRACT\.json|DB_SCHEMA\.sql/i.test(f.path)
         );
         if (touchedContract && !guardSynced) {
           guardSynced = true;
+          let resynced = 0;
           for (const t of state.tasks) {
             if (t.id !== task.id && t.role !== task.role && t.status === 'done') {
               t.status = 'pending';
+              resynced++;
             }
+          }
+          if (resynced) {
+            await notify(`🔄 [Schema Guard] ${state.name} แก้ Contract/DB -> สั่งอีกฝั่ง Sync ใหม่`);
           }
         }
 
         task.status = 'done';
         appendHistory(state, `${task.id}: ${res.note || 'done'}`);
         saveState(dir, state);
+        const fileList = (res.files || []).map((f) => f.path).slice(0, 6).join(', ') || '-';
+        await notify(
+          `✔️ [Phase 3/4 เสร็จ (${idx + 1}/${totalTasks})] ${task.title}\n` +
+            `ไฟล์: ${fileList}\nสรุป: ${res.note || 'done'}`
+        );
       }
 
       state.phase = 'verify';
@@ -116,18 +160,24 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
       saveState(dir, state);
     }
 
-    // 3. Verify & Fix Loop (PM2 + Test + Circuit Breaker)
+    // Phase 4: Verify 4-Layer & Fix Loop (PM2 + Security + DB/API + Browser E2E)
     while (state.phase === 'verify') {
-      await notify(`[${state.name}] รัน PM2 & Test (Port ${state.port})...`);
-      const check = await verifyProject(dir, state);
+      await notify(`🧪 [Phase 4/4: Verify] ${state.name} เริ่มตรวจ 4 ชั้น (Port ${state.port})...`);
+      const check = await verifyProject(dir, state, async (stepMsg) => {
+        await notify(`🧪 [Phase 4/4] ${stepMsg}`);
+      });
+
       if (check.ok) {
         state.phase = state.blockedQuestions.length ? 'waiting_decisions' : 'done';
         appendHistory(state, 'Verified & online via PM2');
         saveState(dir, state);
         await notify(
-          `[${state.name}] เสร็จสมบูรณ์! รันบน http://127.0.0.1:${state.port} (PM2: ${state.pm2Name})` +
+          `🎉 [เสร็จสมบูรณ์ 4/4] ${state.name}\n` +
+            `PM2: ${state.pm2Name} (online)\n` +
+            `🔗 URL: ${previewUrls(state.port, config)}\n` +
+            `📂 Path: ${dir}` +
             (state.blockedQuestions.length
-              ? `\nมี ${state.blockedQuestions.length} คำถามที่ข้ามไว้ (พิมพ์ /questions เพื่อตอบ)`
+              ? `\n\n⚠️ มี ${state.blockedQuestions.length} คำถามที่ข้ามไว้ (พิมพ์ /questions เพื่อตอบ)`
               : '')
         );
         return;
@@ -135,8 +185,8 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 
       if (state.fixLoops >= config.maxFixLoops) {
         const decision = await askChoice(
-          `[${state.name}] แก้บั๊กครบ ${config.maxFixLoops} รอบแล้วยังไม่ผ่าน:\n${check.error.slice(0, 400)}`,
-          ['ลองแก้ต่อ (Retry)', 'ย้อน Checkpoint (Rollback)', 'ข้ามไปก่อน (Skip)'],
+          `🛑 [Circuit Breaker — ${state.name}] แก้ครบ ${config.maxFixLoops} รอบแล้วยังไม่ผ่าน (${check.layer}):\n${check.error.slice(0, 400)}`,
+          ['ลองแก้ต่อ (Retry)', 'ย้อน Checkpoint + DB (Rollback)', 'ข้ามไปก่อน (Skip)'],
           false
         );
 
@@ -144,13 +194,13 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
           gitRollback(dir, state.lastCheckpoint);
           state.phase = 'paused';
           saveState(dir, state);
-          await notify(`[${state.name}] Rollback กลับ ${state.lastCheckpoint} แล้ว`);
+          await notify(`⏪ [${state.name}] Rollback โค้ด (${state.lastCheckpoint}) + คืนค่า DB Snapshot แล้ว`);
           return;
         }
         if (decision.includes('Skip')) {
           state.phase = 'paused';
           saveState(dir, state);
-          await notify(`[${state.name}] พักงานไว้ชั่วคราว`);
+          await notify(`⏸️ [${state.name}] พักงานไว้ชั่วคราว`);
           return;
         }
         state.fixLoops = 0;
@@ -158,14 +208,18 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
 
       state.fixLoops += 1;
       saveState(dir, state);
-      await notify(`[${state.name}] พบ Error -> แก้บั๊กรอบที่ ${state.fixLoops}/${config.maxFixLoops}`);
-
       const targetRole = check.layer === 'frontend' ? 'frontend' : 'backend';
+      await notify(
+        `❌ [Phase 4/4: Verify ไม่ผ่าน — รอบแก้ ${state.fixLoops}/${config.maxFixLoops}]\n` +
+          `Layer: ${check.layer}\nสาเหตุ: ${check.error.slice(0, 350)}\n` +
+          `🔧 ส่งให้ ${targetRole.toUpperCase()} แก้ไข...`
+      );
+
       const fixTask = {
         id: `fix-${state.fixLoops}`,
         role: targetRole,
         title: 'Fix verification failure',
-        detail: 'Fix root cause of runtime/test error without breaking API_CONTRACT.json.'
+        detail: 'Fix root cause of runtime/test/security error without breaking API_CONTRACT.json.'
       };
       const context = buildCompressedContext(dir, state);
       const fixRes = await executeTask({
@@ -187,7 +241,7 @@ export async function runProjectLoop({ dir, state, config, notify, askChoice }) 
     state.phase = 'error';
     appendHistory(state, `Error: ${err.message}`);
     saveState(dir, state);
-    await notify(`[${state.name}] Error: ${err.message}`);
+    await notify(`💥 [${state.name}] Error: ${err.message}`);
   }
 }
 
@@ -198,14 +252,14 @@ export async function continueProject({ dir, state, instruction, config, notify,
   state.tasks.push(
     {
       id: `cont-be-${Date.now()}`,
-      role: 'claude',
-      title: `Backend update: ${instruction}`,
+      role: 'backend',
+      title: `Backend & DB Migration: ${instruction}`,
       detail: instruction,
       status: 'pending'
     },
     {
       id: `cont-fe-${Date.now()}`,
-      role: 'gemini',
+      role: 'frontend',
       title: `Frontend update: ${instruction}`,
       detail: instruction,
       status: 'pending'
@@ -228,8 +282,24 @@ async function startDaemon() {
     return;
   }
 
-  let busy = false;
-  const bot = new TelegramController(config, {
+  let running = false;
+  const jobQueue = [];
+  let bot;
+
+  const processQueue = async () => {
+    if (running || !jobQueue.length) return;
+    running = true;
+    try {
+      while (jobQueue.length) {
+        const job = jobQueue.shift();
+        await job();
+      }
+    } finally {
+      running = false;
+    }
+  };
+
+  bot = new TelegramController(config, {
     onCommand: async (text) => {
       const notify = (m) => bot.send(m);
       const askChoice = (q, opts, multi) => bot.askChoice(q, opts, multi);
@@ -238,13 +308,14 @@ async function startDaemon() {
         await notify(
           [
             'DualLoop Commands:',
-            '/new <ชื่อ> | <คอนเซ็ปต์>',
-            '/continue <slug> | <คำสั่งเพิ่มเติม>',
+            '/new <ชื่อ> | <คอนเซ็ปต์> — สร้างโปรแกรมใหม่ (ต่อคิวได้)',
+            '/continue <slug> | <คำสั่งเพิ่มเติม> — ทำต่อจากโปรเจกต์เดิม',
             '/questions — ตอบคำถามที่ข้ามไว้',
-            '/status — สถานะโปรเจกต์ + PM2',
+            '/status — สถานะโปรเจกต์ + คิว + PM2',
             '/logs <slug> — ดู log ล่าสุด',
-            '/model <backend|frontend> [provider] <model-id> — สลับโมเดล/ค่ายชั่วคราว',
-            '/rollback <slug> — ย้อน Checkpoint'
+            '/model <backend|frontend> [provider] <model-id> — สลับโมเดล/ค่าย',
+            '/rollback <slug> — ย้อน Checkpoint + DB Snapshot',
+            '/delete <slug> — หยุด PM2 และลบโปรเจกต์'
           ].join('\n')
         );
         return;
@@ -275,7 +346,9 @@ async function startDaemon() {
           .map((p) => `- ${p.state.slug}: ${p.state.phase} (port ${p.state.port})`)
           .join('\n');
         const pm2 = runCmd('pm2 status --no-color', process.cwd());
-        await notify(`Projects:\n${list || '(empty)'}\n\nPM2:\n${pm2.output.slice(0, 1500)}`);
+        await notify(
+          `Queue: ${jobQueue.length} waiting | Running: ${running}\n\nProjects:\n${list || '(empty)'}\n\nPM2:\n${pm2.output.slice(0, 1400)}`
+        );
         return;
       }
 
@@ -292,7 +365,23 @@ async function startDaemon() {
         const state = loadState(dir);
         if (!state) return notify(`Not found: ${slug}`);
         const res = gitRollback(dir, state.lastCheckpoint);
-        await notify(res.ok ? `Rolled back ${slug} to ${state.lastCheckpoint}` : res.output);
+        await notify(res.ok ? `⏪ Rolled back ${slug} to ${state.lastCheckpoint} (+ DB Snapshot)` : res.output);
+        return;
+      }
+
+      if (text.startsWith('/delete')) {
+        const slug = text.replace('/delete', '').trim();
+        const dir = path.join(config.workspacesDir, slug);
+        const state = loadState(dir);
+        if (!state) return notify(`Not found: ${slug}`);
+        const confirm = await askChoice(
+          `⚠️ ยืนยันลบโปรเจกต์ "${state.name}" (${dir}) และหยุด PM2?`,
+          ['ยืนยันลบ (Delete)', 'ยกเลิก (Cancel)'],
+          false
+        );
+        if (!confirm.includes('Delete')) return notify('ยกเลิกการลบแล้ว');
+        deleteProject(dir, state);
+        await notify(`🗑️ ลบโปรเจกต์ ${slug} และหยุด PM2 แล้ว`);
         return;
       }
 
@@ -313,13 +402,9 @@ async function startDaemon() {
           }
           p.state.phase = 'build';
           saveState(p.dir, p.state);
-          runProjectLoop({ dir: p.dir, state: p.state, config, notify, askChoice });
+          jobQueue.push(() => runProjectLoop({ dir: p.dir, state: p.state, config, notify, askChoice }));
         }
-        return;
-      }
-
-      if (busy) {
-        await notify('กำลังทำงานอื่นอยู่ รอสักครู่ครับ');
+        processQueue();
         return;
       }
 
@@ -329,10 +414,11 @@ async function startDaemon() {
         const concept = rest.join('|').trim() || name.trim();
         const port = allocatePort(config.workspacesDir, config.basePort);
         const { dir, state } = createProjectState(config.workspacesDir, name.trim(), concept, port);
-        busy = true;
-        runProjectLoop({ dir, state, config, notify, askChoice }).finally(() => {
-          busy = false;
-        });
+        jobQueue.push(() => runProjectLoop({ dir, state, config, notify, askChoice }));
+        if (running || jobQueue.length > 1) {
+          await notify(`📥 รับงานเข้าคิว (#${jobQueue.length}): ${state.name}`);
+        }
+        processQueue();
         return;
       }
 
@@ -346,10 +432,11 @@ async function startDaemon() {
           await notify('รูปแบบ: /continue <slug> | <คำสั่งเพิ่มเติม>');
           return;
         }
-        busy = true;
-        continueProject({ dir, state, instruction, config, notify, askChoice }).finally(() => {
-          busy = false;
-        });
+        jobQueue.push(() => continueProject({ dir, state, instruction, config, notify, askChoice }));
+        if (running || jobQueue.length > 1) {
+          await notify(`📥 รับคำสั่งต่อยอดเข้าคิว (#${jobQueue.length}): ${state.name}`);
+        }
+        processQueue();
       }
     }
   });

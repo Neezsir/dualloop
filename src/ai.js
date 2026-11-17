@@ -45,14 +45,20 @@ function resolveBin(bin) {
   return bin;
 }
 
-function runCli(bin, args, promptText) {
+function runCli(bin, args, promptText, timeoutMs = 180000) {
   const res = spawnSync(resolveBin(bin), args, {
     input: promptText,
     encoding: 'utf8',
+    timeout: timeoutMs,
     shell: process.platform === 'win32',
     maxBuffer: 10 * 1024 * 1024
   });
-  if (res.error) throw new Error(`${bin} CLI failed: ${res.error.message}`);
+  if (res.error) {
+    if (res.error.code === 'ETIMEDOUT') {
+      throw new Error(`${bin} CLI timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw new Error(`${bin} CLI failed: ${res.error.message}`);
+  }
   if (res.status !== 0) {
     throw new Error(`${bin} CLI error: ${res.stderr || res.stdout}`);
   }
@@ -118,8 +124,8 @@ async function callOpenAICompat({ baseUrl, apiKey, model, prompt, system }) {
 const PROVIDERS = {
   'claude-cli': {
     ready: () => true,
-    run: (prompt, system, model) =>
-      runCli('claude', model ? ['-p', '--output-format', 'text', '--model', model] : ['-p', '--output-format', 'text'], `${system}\n\n${prompt}`)
+    run: (prompt, system, model, c) =>
+      runCli('claude', model ? ['-p', '--output-format', 'text', '--model', model] : ['-p', '--output-format', 'text'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
   anthropic: {
     ready: (c) => Boolean(c.anthropicApiKey),
@@ -127,13 +133,13 @@ const PROVIDERS = {
   },
   agy: {
     ready: () => true,
-    run: (prompt, system, model) =>
-      runCli('agy', model ? ['--model', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`)
+    run: (prompt, system, model, c) =>
+      runCli('agy', model ? ['--model', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
   'gemini-cli': {
     ready: () => true,
-    run: (prompt, system, model) =>
-      runCli('gemini', model ? ['-m', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`)
+    run: (prompt, system, model, c) =>
+      runCli('gemini', model ? ['-m', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
   gemini: {
     ready: (c) => Boolean(c.geminiApiKey),
@@ -141,8 +147,8 @@ const PROVIDERS = {
   },
   'codex-cli': {
     ready: () => true,
-    run: (prompt, system, model) =>
-      runCli('codex', model ? ['exec', '-m', model, '-'] : ['exec', '-'], `${system}\n\n${prompt}`)
+    run: (prompt, system, model, c) =>
+      runCli('codex', model ? ['exec', '-m', model, '-'] : ['exec', '-'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
   openai: {
     ready: (c) => Boolean(c.openaiApiKey),

@@ -73,8 +73,10 @@ export function loadConfig() {
     telegramToken: process.env.TELEGRAM_BOT_TOKEN || '',
     telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
     workspacesDir: resolveWorkspacesDir(process.env.WORKSPACES_DIR),
+    publicHost: (process.env.PUBLIC_HOST || '').replace(/\/+$/, ''),
     basePort: Number(process.env.BASE_PORT || 4100),
     maxFixLoops: Number(process.env.MAX_FIX_LOOPS || 4),
+    cliTimeoutMs: Number(process.env.CLI_TIMEOUT_MS || 180000),
     ponytailLevel: process.env.PONYTAIL_LEVEL || 'full',
     autoFallback: process.env.AUTO_FALLBACK !== 'false'
   };

@@ -24,12 +24,16 @@ pm2 start ecosystem.config.cjs
 
 ## Telegram Commands
 
-- `/new <name> | <concept>` — Start clarify (clickable buttons) -> build -> PM2 test loop
-- `/continue <slug> | <instruction>` — Add features on top of `STATE.json`
+- `/new <name> | <concept>` — Start clarify -> build -> 4-layer verify loop (queue-safe)
+- `/continue <slug> | <instruction>` — Add features with DB migration guard
 - `/questions` — Answer queued blocked decisions
-- `/status` — Show project states & PM2 status
+- `/status` — Show project states, job queue & PM2 status
 - `/logs <slug>` — Tail PM2 logs
-- `/rollback <slug>` — Reset to last Git checkpoint
+- `/model <backend|frontend> [provider] <model-id>` — Switch provider/model live
+- `/rollback <slug>` — Reset to last Git checkpoint + DB snapshot
+- `/delete <slug>` — Stop PM2 and remove project folder
+
+Run `node bin/cli.js doctor` to verify Node, PM2, Git, AI providers, Headless Browser & Telegram.
 
 ## CLI Mode
 
