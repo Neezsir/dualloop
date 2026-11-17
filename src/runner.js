@@ -104,7 +104,7 @@ export function startOrReloadPm2(dir, state) {
   return runCmd(`pm2 startOrRestart "${ecoPath}" --update-env`, dir);
 }
 
-function findBrowserBinary() {
+export function findBrowserBinary() {
   const candidates =
     process.platform === 'win32'
       ? [
@@ -230,10 +230,60 @@ async function probeFrontendBrowser(url) {
   }
 }
 
+const SECRET_PATTERNS = [
+  /sk-ant-[a-zA-Z0-9_-]{16,}/,
+  /AIza[0-9A-Za-z_-]{20,}/,
+  /sk-proj-[a-zA-Z0-9_-]{16,}/,
+  /ghp_[a-zA-Z0-9]{20,}/,
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/
+];
+
+const SQL_INJECTION_PATTERNS = [
+  /(?:SELECT|INSERT|UPDATE|DELETE)\b[^\n`"]*\$\{/i,
+  /f["'](?:SELECT|INSERT|UPDATE|DELETE)\b[^"']*\{/i
+];
+
 /**
- * Verify all 4 layers: PM2 runtime, DB/API tests, API contract endpoints, and Frontend DOM/JS/Network.
+ * Scan workspace source files for hardcoded secrets or interpolated SQL queries.
+ */
+export function runSecurityCheck(dir) {
+  const issues = [];
+  const walk = (cur) => {
+    for (const entry of fs.readdirSync(cur, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name.startsWith('.env')) continue;
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(js|mjs|cjs|py|html)$/i.test(entry.name)) continue;
+      const rel = path.relative(dir, full);
+      const lines = fs.readFileSync(full, 'utf8').split(/\r?\n/);
+      lines.forEach((line, idx) => {
+        for (const rx of SECRET_PATTERNS) {
+          if (rx.test(line)) issues.push(`${rel}:${idx + 1} hardcoded secret pattern`);
+        }
+        if (!/test|e2e/i.test(entry.name)) {
+          for (const rx of SQL_INJECTION_PATTERNS) {
+            if (rx.test(line)) issues.push(`${rel}:${idx + 1} unsafe SQL string interpolation (use parameterized queries)`);
+          }
+        }
+      });
+    }
+  };
+  walk(dir);
+  return issues.length ? { ok: false, error: `Security check failed:\n${issues.slice(0, 6).join('\n')}` } : { ok: true };
+}
+
+/**
+ * Verify all 4 layers: PM2 runtime, Security, DB/API tests, API contract endpoints, and Frontend DOM/JS/Network.
  */
 export async function verifyProject(dir, state) {
+  const sec = runSecurityCheck(dir);
+  if (!sec.ok) {
+    return { ok: false, layer: 'backend', error: sec.error };
+  }
+
   // 1. PM2 Runtime check
   const pm2Res = startOrReloadPm2(dir, state);
   if (!pm2Res.ok) {
@@ -315,5 +365,6 @@ export async function verifyProject(dir, state) {
     return { ok: false, layer: 'frontend', error: `Browser probe failed:\n${browserCheck.error}` };
   }
 
+  runCmd('pm2 save', dir);
   return { ok: true };
 }

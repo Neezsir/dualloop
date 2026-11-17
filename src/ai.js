@@ -13,12 +13,13 @@ function ponytailDirective(level) {
 }
 
 const RELATIONAL_DB_RULES = [
-  'RELATIONAL DATABASE RULES (STRICT):',
+  'RELATIONAL DATABASE & MIGRATION RULES (STRICT):',
   '- Proper 3NF relational schema: every table MUST have an explicit PRIMARY KEY.',
   '- Enforce relationships with FOREIGN KEY (...) REFERENCES ... ON DELETE CASCADE/RESTRICT.',
   '- For SQLite: always execute PRAGMA foreign_keys = ON; on every DB connection.',
   '- Add NOT NULL, UNIQUE, CHECK constraints and CREATE INDEX on all foreign key & lookup columns.',
-  '- Never store relational arrays/lists as comma-separated strings or unvalidated JSON blobs when a join/child table belongs.'
+  '- Never store relational arrays/lists as comma-separated strings or unvalidated JSON blobs when a join/child table belongs.',
+  '- MIGRATION GUARD: When modifying an existing DB/project, NEVER DROP existing tables or wipe user data; add idempotent ALTER TABLE / migration steps checking column/table existence first.'
 ].join('\n');
 
 /**
@@ -253,11 +254,13 @@ export async function executeTask({ task, state, context, errorLog, config }) {
   const roleDesc = isFrontend
     ? [
         'You are the Frontend Engineer. Build clean, responsive HTML/CSS/JS UI strictly matching API_CONTRACT.json and served by the backend or static dir.',
-        'Ensure zero runtime JS exceptions, zero console.error logs, graceful error handling on failed fetches, and real interactive DOM rendering.'
+        'Ensure zero runtime JS exceptions, zero console.error logs, graceful error handling on failed fetches, and real interactive DOM rendering.',
+        'If the UI has interactive forms/CRUD, also create a runnable e2e.test.js (set e2eCommand: "node e2e.test.js") verifying form submission -> API -> DB persistence -> reload.'
       ].join('\n')
     : [
         'You are the Backend/DB/Process/Test Engineer. Build Node.js/Python backend, strict relational DB setup, process entrypoint listening on process.env.PORT, and an automated full-stack test script (test.js).',
         RELATIONAL_DB_RULES,
+        'SECURITY BASELINE: Always use parameterized SQL queries (? / $1), never hardcode API keys/secrets in source code, never return password/secret fields in API JSON responses, and enforce auth guards on protected routes.',
         'Your testCommand (e.g. node test.js) MUST start cleanly against the live server or isolated test DB and verify: (1) DB schema & Foreign Key constraint rejection, (2) API CRUD round-trips matching API_CONTRACT.json, and (3) invalid-input 4xx validation.'
       ].join('\n');
 

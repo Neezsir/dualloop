@@ -6,7 +6,7 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.js';
 import { createProjectState, loadState } from '../src/state.js';
-import { allocatePort, runCmd } from '../src/runner.js';
+import { allocatePort, findBrowserBinary, runCmd } from '../src/runner.js';
 import { continueProject, runProjectLoop } from '../src/orchestrator.js';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -240,9 +240,31 @@ async function runInit(onlySkill = false) {
     const startPm2 = await askCliChoice('8) เริ่มรัน Telegram Daemon ด้วย PM2 เลยไหม?', ['Yes', 'No'], false);
     if (startPm2 === 'Yes') {
       const res = runCmd(`pm2 start "${path.join(PKG_ROOT, 'ecosystem.config.cjs')}"`, process.cwd());
+      runCmd('pm2 save', process.cwd());
       console.log(res.output);
     }
   }
+}
+
+function runDoctor() {
+  const cfg = loadConfig();
+  const has = (cmd) => runCmd(cmd, process.cwd()).ok;
+  const browser = findBrowserBinary();
+  const rows = [
+    ['Node.js', process.version, true],
+    ['PM2', has('pm2 -v') ? 'installed' : 'missing (npm i -g pm2)', has('pm2 -v')],
+    ['Git', has('git --version') ? 'installed' : 'missing (checkpoint disabled)', has('git --version')],
+    ['Backend AI', `${cfg.backendProvider} / ${cfg.backendModel}`, true],
+    ['Frontend AI', `${cfg.frontendProvider} / ${cfg.frontendModel}`, true],
+    ['Auto-Fallback', String(cfg.autoFallback), true],
+    ['Headless Browser', browser || 'not found (HTML/asset smoke only)', Boolean(browser)],
+    ['Telegram Bot', cfg.telegramToken ? (cfg.telegramChatId ? 'configured' : 'missing TELEGRAM_CHAT_ID') : 'disabled', Boolean(cfg.telegramToken)]
+  ];
+  console.log('\n=== DualLoop Doctor ===');
+  for (const [k, v, ok] of rows) {
+    console.log(`${ok ? '\x1b[32m✓\x1b[0m' : '\x1b[33m!\x1b[0m'} ${k.padEnd(17)}: ${v}`);
+  }
+  console.log('\nTip (24/7 server): run `pm2 startup` then `pm2 save` to auto-boot services.');
 }
 
 async function main() {
@@ -254,6 +276,7 @@ async function main() {
         'dualloop CLI',
         '  dualloop                                ติดตั้ง Skill + เลือก Model AI ทีละขั้นตอน',
         '  dualloop init                           ตั้งค่าเต็มรูปแบบ (.env + Skill + PM2)',
+        '  dualloop doctor                         เช็กความพร้อมเครื่อง (PM2, Git, AI, Browser, Telegram)',
         '  dualloop install-skill [all|antigravity|claude|agents]',
         '  dualloop run "<name>" "<concept>"       เริ่มสร้างโปรแกรม 1 ลูปเต็ม',
         '  dualloop continue <slug> "<instruction>" สั่งต่อยอดโปรเจกต์เดิม',
@@ -265,9 +288,11 @@ async function main() {
 
   if (!cmd) return runInit(true);
   if (cmd === 'init') return runInit(false);
+  if (cmd === 'doctor') return runDoctor();
   if (cmd === 'install-skill') return args[0] ? installSkills(args[0]) : runInit(true);
   if (cmd === 'start') {
     const res = runCmd(`pm2 start "${path.join(PKG_ROOT, 'ecosystem.config.cjs')}"`, process.cwd());
+    runCmd('pm2 save', process.cwd());
     console.log(res.output);
     return;
   }

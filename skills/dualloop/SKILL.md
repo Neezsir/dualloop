@@ -18,7 +18,8 @@ Build complete software in tight, low-token loops: clarify via clickable choices
 - **Short questions, choice-first:** Ask via structured multiple-choice (`ask_question` in IDE or inline buttons in Telegram). One decision per prompt, 2–4 concise options.
 - **Minimal code:** Stdlib and native platform features first (Node.js, Python, HTML/CSS/JS). Zero unrequested abstractions or boilerplate.
 - **PM2 runtime:** Run all built services via `pm2` with isolated ports and `.env`.
-- **Relational DB integrity:** Always design 3NF relational tables with explicit `PRIMARY KEY`, `FOREIGN KEY ... REFERENCES ... ON DELETE`, `NOT NULL`/`UNIQUE`/`CHECK` constraints, indexes on FKs, and `PRAGMA foreign_keys = ON` (SQLite).
+- **Relational DB integrity:** Always design 3NF relational tables with explicit `PRIMARY KEY`, `FOREIGN KEY ... REFERENCES ... ON DELETE`, `NOT NULL`/`UNIQUE`/`CHECK` constraints, indexes on FKs, and `PRAGMA foreign_keys = ON` (SQLite). On updates, use idempotent `ALTER TABLE` migrations — never drop existing data.
+- **Security baseline:** Always parameterize SQL queries, never hardcode secrets/keys, never expose `password`/secret fields in JSON APIs, and guard protected routes.
 - **Isolated project folder:** Create and work inside a dedicated folder named after `<project-name>` on Desktop (unless another path is specified).
 - **Single source of truth:** Keep `STATE.json` and `API_CONTRACT.json` concise; read state files instead of replaying long history.
 
@@ -45,9 +46,10 @@ Build complete software in tight, low-token loops: clarify via clickable choices
    - If a task requires human judgment or external credentials, mark it `blocked`, push a short choice question to `blockedQuestions`, and continue remaining unblocked tasks.
 
 5. **Verify & Circuit Breaker (4-Layer Full-Stack):**
-   - Start/reload service with `pm2`, confirm `online` status.
+   - Start/reload service with `pm2`, confirm `online` status, and run `pm2 save`.
+   - Run security baseline check (no hardcoded secrets, no SQL string interpolation).
    - Run DB + API tests (verify FK constraints, CRUD round-trips, 4xx validation, `API_CONTRACT.json` endpoints).
-   - Run Frontend browser/E2E verification (zero JS/console errors, zero 4xx/5xx asset or API requests, non-blank DOM).
+   - Run Frontend browser/E2E verification (zero JS/console errors, zero 4xx/5xx asset or API requests, non-blank DOM, and form -> API -> DB -> reload flow).
    - On failure: route to the failing track (`backend` or `frontend`), fix root cause, and re-test up to `MAX_FIX_LOOPS` (default 4).
    - If still failing: stop, keep last working Git checkpoint available for rollback, and ask user via concise choice options (`Retry`, `Rollback`, `Skip`).
 
