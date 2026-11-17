@@ -83,10 +83,30 @@ export class TelegramController {
     });
 
     this.pendingChoices.set(qid, state);
-    this.send(question, { reply_markup: this.buildKeyboard(qid, state) }).catch((err) => {
-      console.error('Telegram askChoice send error:', err.message);
-    });
-    return promise;
+    this.send(question, { reply_markup: this.buildKeyboard(qid, state) })
+      .then((sent) => {
+        if (sent?.message_id) state.messageId = sent.message_id;
+      })
+      .catch((err) => {
+        console.error('Telegram askChoice send error:', err.message);
+      });
+    return { qid, promise };
+  }
+
+  resolveExternal(qid, answer, isCancel = false) {
+    const pending = this.pendingChoices.get(qid);
+    if (!pending) return;
+    this.pendingChoices.delete(qid);
+    if (this.awaitingTextQid === qid) this.awaitingTextQid = null;
+    if (pending.messageId && this.token && this.chatId) {
+      this.api('editMessageText', {
+        chat_id: this.chatId,
+        message_id: pending.messageId,
+        text: `${pending.question}\n-> ${isCancel ? '❌ ยกเลิกผ่าน Web Dashboard' : `${answer} (ตอบผ่าน Web Dashboard)`}`
+      }).catch(() => {});
+    }
+    if (isCancel) pending.reject(new Error('Cancelled by user'));
+    else pending.resolve(answer);
   }
 
   cancelPending(reason = 'Cancelled by user') {

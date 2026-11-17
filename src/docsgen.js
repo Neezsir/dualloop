@@ -39,7 +39,7 @@ function parseEndpoints(contract) {
 /**
  * Generate per-project flow, diagram (SVG/PNG), interactive HTML, and TECHSTACK.txt inside <dir>/docs.
  */
-export function generateProjectDocs(dir, state) {
+export function generateProjectDocs(dir, state, verifyReport = null) {
   const docsDir = path.join(dir, 'docs');
   fs.mkdirSync(docsDir, { recursive: true });
 
@@ -168,7 +168,10 @@ export function generateProjectDocs(dir, state) {
   <div class="wrap">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h1>⚡ ${esc(state.name)} — Flow &amp; Techstack</h1>
-      <a class="btn" href="./api-tester.html">🧪 Open Interactive API Tester ↗</a>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a class="btn" href="./api-tester.html">🧪 API Tester ↗</a>
+        <a class="btn" href="./test-report.html">✅ Test Report ↗</a>
+      </div>
     </div>
     <p style="color:#94a3b8;">${esc(state.concept)}</p>
     <div class="card"><h3>System Diagram</h3><img src="./diagram.svg" alt="diagram"/></div>
@@ -274,7 +277,53 @@ export function generateProjectDocs(dir, state) {
 </html>`;
   fs.writeFileSync(path.join(docsDir, 'api-tester.html'), testerHtml, 'utf8');
 
-  // 5. Render diagram.png if Chrome/Edge binary exists
+  // 6. Test Report HTML (test-report.html)
+  if (verifyReport) {
+    let hasPreview = false;
+    if (verifyReport.screenshotPath && fs.existsSync(verifyReport.screenshotPath)) {
+      try {
+        fs.copyFileSync(verifyReport.screenshotPath, path.join(docsDir, 'preview.png'));
+        hasPreview = true;
+      } catch {}
+    }
+    const reportHtml = `<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>${esc(state.name)} — Verification Report</title>
+  <style>
+    body { margin:0; font-family:system-ui,sans-serif; background:#0b1020; color:#e7edf8; padding:24px; }
+    .wrap { max-width:960px; margin:0 auto; }
+    .card { background:#131b31; border:1px solid #243258; border-radius:12px; padding:16px; margin-bottom:16px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th, td { text-align:left; padding:10px; border-bottom:1px solid #243258; }
+    .pass { color:#22c55e; font-weight:700; }
+    img { max-width:100%; border-radius:8px; border:1px solid #243258; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>✅ ${esc(state.name)} — Full-Stack Verification Report</h1>
+    <p style="color:#94a3b8;">Verified at ${esc(verifyReport.verifiedAt)} · Port ${state.port} · PM2: ${esc(state.pm2Name)}</p>
+    <div class="card">
+      <table>
+        <tr><th>Layer</th><th>Result</th></tr>
+        <tr><td>1. Security Baseline</td><td class="pass">${esc(verifyReport.security)}</td></tr>
+        <tr><td>2. PM2 Runtime</td><td class="pass">${esc(verifyReport.pm2)}</td></tr>
+        <tr><td>3. DB &amp; API Contract</td><td class="pass">${esc(verifyReport.dbApi)}</td></tr>
+        <tr><td>4. Browser E2E &amp; Responsive</td><td class="pass">${esc(verifyReport.browser)}</td></tr>
+        <tr><td>5. Concurrent Load (20 reqs)</td><td class="pass">${esc(verifyReport.load)}</td></tr>
+      </table>
+    </div>
+    ${hasPreview ? '<div class="card"><h3>Live UI Screenshot</h3><img src="./preview.png" alt="UI Preview"/></div>' : ''}
+  </div>
+</body>
+</html>`;
+    fs.writeFileSync(path.join(docsDir, 'test-report.html'), reportHtml, 'utf8');
+  }
+
+  // 7. Render diagram.png if Chrome/Edge binary exists
   const pngPath = path.join(docsDir, 'diagram.png');
   const bin = findBrowserBinary();
   if (bin) {

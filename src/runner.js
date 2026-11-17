@@ -694,6 +694,47 @@ export async function verifyProject(dir, state, onStep = () => {}) {
     };
   }
 
+  // 5. Quick Concurrent Load & Latency Check (20 parallel GETs)
+  const load = await runQuickLoadCheck(baseUrl, 20);
+  if (!load.ok) {
+    return { ok: false, layer: 'backend', error: `Load check failed: ${load.failed}/${load.total} errors` };
+  }
+
   runCmd('pm2 save', dir);
-  return { ok: true, screenshotPath: browserCheck.screenshotPath };
+  return {
+    ok: true,
+    screenshotPath: browserCheck.screenshotPath,
+    report: {
+      verifiedAt: new Date().toISOString(),
+      security: 'PASS',
+      pm2: `PASS (${state.pm2Name} online on :${state.port})`,
+      dbApi: state.testCommand ? `PASS (${state.testCommand})` : 'PASS (Contract HTTP probe)',
+      browser: browserCheck.skipped ? 'SKIPPED (no Chrome/Edge)' : 'PASS (1280px + 390px + 0 console/img errors)',
+      load: `PASS (${load.okCount}/${load.total} OK, avg ${load.avgMs}ms, max ${load.maxMs}ms)`
+    }
+  };
+}
+
+/**
+ * Fire N concurrent GET requests to verify stability and measure latency.
+ */
+async function runQuickLoadCheck(baseUrl, count = 20) {
+  const times = [];
+  let failed = 0;
+  await Promise.all(
+    Array.from({ length: count }, async () => {
+      const t0 = performance.now();
+      try {
+        const r = await fetch(`${baseUrl}/`);
+        if (r.status >= 500) failed++;
+      } catch {
+        failed++;
+      } finally {
+        times.push(Math.round(performance.now() - t0));
+      }
+    })
+  );
+  const avgMs = Math.round(times.reduce((a, b) => a + b, 0) / Math.max(1, times.length));
+  const maxMs = Math.max(0, ...times);
+  return { ok: failed === 0, okCount: count - failed, failed, total: count, avgMs, maxMs };
 }

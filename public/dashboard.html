@@ -51,6 +51,8 @@
       </div>
     </div>
 
+    <div id="questionBanner" class="panel" style="display:none;border-color:var(--warn);"></div>
+
     <div id="projectsGrid" class="grid"></div>
 
     <div class="panel" style="margin-top:16px;">
@@ -71,44 +73,6 @@
   </div>
 
   <script>
-    async function loadData() {
-      const res = await fetch('/api/projects');
-      const data = await res.json();
-      document.getElementById('sysMeta').textContent =
-        `Queue: ${data.queueSize} | Running: ${data.running ? 'YES' : 'IDLE'} | Disk: ${data.disk} | Updated: ${new Date().toLocaleTimeString()}`;
-
-      const grid = document.getElementById('projectsGrid');
-      if (!data.projects.length) {
-        grid.innerHTML = '<div class="panel">ยังไม่มีโปรเจกต์ (สร้างด้านบนหรือพิมพ์ /new ใน Telegram)</div>';
-        return;
-      }
-
-      grid.innerHTML = data.projects.map(p => {
-        const cls = p.pm2Status === 'online' ? 'online' : (p.phase === 'error' ? 'err' : 'warn');
-        return `
-          <div class="panel">
-            <div class="row" style="justify-content:space-between;">
-              <strong>${esc(p.name)}</strong>
-              <span class="badge ${cls}">${esc(p.phase)} / ${esc(p.pm2Status)}</span>
-            </div>
-            <div class="meta" style="margin:6px 0;">
-              Slug: <code>${esc(p.slug)}</code> · Port: <a href="http://127.0.0.1:${p.port}" target="_blank" style="color:var(--acc)">${p.port}</a><br/>
-              BE calls: ${p.metrics?.aiCalls?.backend || 0} · FE calls: ${p.metrics?.aiCalls?.frontend || 0} · Fix: ${p.metrics?.totalFixLoops || 0}
-            </div>
-            ${p.hasPreview ? `<img class="preview" src="/api/preview/${encodeURIComponent(p.slug)}?t=${Date.now()}" alt="preview"/>` : ''}
-            <div class="actions">
-              <button onclick="act('${p.slug}','restart')">Restart</button>
-              <button onclick="act('${p.slug}','resume')">Resume</button>
-              <button onclick="viewLogs('${p.slug}')">Logs</button>
-              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/architecture.html','_blank')">Flow/Docs</button>
-              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/api-tester.html','_blank')">API Tester</button>
-              <button onclick="act('${p.slug}','rollback')">Rollback</button>
-              <button class="danger" onclick="if(confirm('ลบ ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
-            </div>
-          </div>`;
-      }).join('');
-    }
-
     async function act(slug, action) {
       const r = await fetch('/api/action', {
         method: 'POST',
@@ -144,6 +108,123 @@
       loadData();
     }
 
+    async function openContinue(slug) {
+      const instruction = prompt(`สั่งแก้/เพิ่มฟีเจอร์ให้ ${slug}:`);
+      if (!instruction) return;
+      const r = await fetch('/api/continue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug, instruction })
+      });
+      if (!r.ok) alert('Failed');
+      loadData();
+    }
+
+    async function openMeta(slug) {
+      const r = await fetch(`/api/project-meta/${encodeURIComponent(slug)}`);
+      const j = await r.json();
+      const input = prompt(
+        `[${slug}]\n.env:\n${j.envMasked}\n\nRules:\n${j.rules || '(none)'}\n\nพิมพ์ KEY=VALUE เพื่อแก้ .env หรือ rule:ข้อความ เพื่อเพิ่มกฎ:`
+      );
+      if (!input) return;
+      const body = { slug };
+      if (input.startsWith('rule:')) body.rule = input.slice(5).trim();
+      else if (input.includes('=')) {
+        const eq = input.indexOf('=');
+        body.envKey = input.slice(0, eq).trim();
+        body.envVal = input.slice(eq + 1).trim();
+      } else body.rule = input;
+      await fetch('/api/project-meta', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      loadData();
+    }
+
+    let activeQuestion = null;
+    function renderQuestions(list) {
+      activeQuestion = list && list.length ? list[0] : null;
+      const box = document.getElementById('questionBanner');
+      if (!activeQuestion) { box.style.display = 'none'; return; }
+      const q = activeQuestion;
+      box.style.display = 'block';
+      const opts = q.options.map((o, i) =>
+        q.allowMultiple
+          ? `<label style="display:block;margin:4px 0;"><input type="checkbox" name="qopt" value="${esc(o)}"/> ${esc(o)}</label>`
+          : `<button class="primary" onclick="submitWebAns('${q.id}', ${i})">${esc(o)}</button>`
+      ).join(' ');
+      box.innerHTML = `
+        <div style="margin-bottom:8px;"><strong>❓ คำถามรอคำตอบ:</strong> ${esc(q.question)}</div>
+        <div class="row" style="gap:8px;">
+          ${opts}
+          ${q.allowMultiple ? `<button class="primary" onclick="submitWebMulti('${q.id}')">Submit</button>` : ''}
+          ${q.allowCustom ? `<button onclick="submitWebCustom('${q.id}')">✏️ พิมพ์ตอบเอง</button>` : ''}
+          ${q.allowCancel ? `<button class="danger" onclick="submitWebCancel('${q.id}')">❌ ยกเลิก</button>` : ''}
+        </div>`;
+    }
+
+    async function sendWebAns(id, answer, cancel = false) {
+      await fetch('/api/answer', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, answer, cancel })
+      });
+      loadData();
+    }
+    function submitWebAns(id, idx) { sendWebAns(id, activeQuestion.options[idx]); }
+    function submitWebMulti(id) {
+      const vals = [...document.querySelectorAll('input[name="qopt"]:checked')].map(el => el.value);
+      sendWebAns(id, vals.length ? vals.join(', ') : activeQuestion.options[0]);
+    }
+    function submitWebCustom(id) {
+      const txt = prompt(activeQuestion.question);
+      if (txt) sendWebAns(id, txt);
+    }
+    function submitWebCancel(id) { sendWebAns(id, '', true); }
+
+    async function loadData() {
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      renderQuestions(data.pendingQuestions || []);
+      document.getElementById('sysMeta').textContent =
+        `Queue: ${data.queueSize} | Running: ${data.running ? 'YES' : 'IDLE'} | Disk: ${data.disk} | Updated: ${new Date().toLocaleTimeString()}`;
+
+      const grid = document.getElementById('projectsGrid');
+      if (!data.projects.length) {
+        grid.innerHTML = '<div class="panel">ยังไม่มีโปรเจกต์ (สร้างด้านบนหรือพิมพ์ /new ใน Telegram)</div>';
+        return;
+      }
+
+      grid.innerHTML = data.projects.map(p => {
+        const cls = p.pm2Status === 'online' ? 'online' : (p.phase === 'error' ? 'err' : 'warn');
+        return `
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;">
+              <strong>${esc(p.name)}</strong>
+              <span class="badge ${cls}">${esc(p.phase)} / ${esc(p.pm2Status)}</span>
+            </div>
+            <div class="meta" style="margin:6px 0;">
+              Slug: <code>${esc(p.slug)}</code> · Port: <a href="http://127.0.0.1:${p.port}" target="_blank" style="color:var(--acc)">${p.port}</a><br/>
+              BE calls: ${p.metrics?.aiCalls?.backend || 0} · FE calls: ${p.metrics?.aiCalls?.frontend || 0} · Fix: ${p.metrics?.totalFixLoops || 0}
+            </div>
+            ${p.hasPreview ? `<img class="preview" src="/api/preview/${encodeURIComponent(p.slug)}?t=${Date.now()}" alt="preview"/>` : ''}
+            <div class="actions">
+              <button onclick="act('${p.slug}','restart')">Restart</button>
+              <button onclick="act('${p.slug}','resume')">Resume</button>
+              <button onclick="openContinue('${p.slug}')">+ Continue</button>
+              <button onclick="openMeta('${p.slug}')">Env &amp; Rules</button>
+              <button onclick="viewLogs('${p.slug}')">Logs</button>
+              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/architecture.html','_blank')">Flow/Docs</button>
+              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/api-tester.html','_blank')">API Tester</button>
+              <button onclick="window.open('/api/project-docs/${encodeURIComponent(p.slug)}/test-report.html','_blank')">Test Report</button>
+              <button onclick="act('${p.slug}','rollback')">Rollback</button>
+              <button class="danger" onclick="if(confirm('ลบ ${p.slug}?')) act('${p.slug}','delete')">Delete</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
     function esc(s) {
       return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
@@ -154,6 +235,10 @@
     const es = new EventSource('/api/events');
     es.onmessage = (ev) => {
       const item = JSON.parse(ev.data);
+      if (item.type === 'question' || item.type === 'question_resolved') {
+        loadData();
+        return;
+      }
       const box = document.getElementById('feedBox');
       box.textContent += `[${item.ts.slice(11, 19)}] ${item.msg}\n`;
       box.scrollTop = box.scrollHeight;

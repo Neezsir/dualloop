@@ -267,15 +267,19 @@ export async function runProjectLoop({
         state.phase = state.blockedQuestions.length ? 'waiting_decisions' : 'done';
         appendHistory(state, 'Verified & online via PM2');
         saveState(dir, state);
-        const docsOut = generateProjectDocs(dir, state);
+        const docsOut = generateProjectDocs(dir, state, {
+          ...(check.report || {}),
+          screenshotPath: check.screenshotPath
+        });
         const pushed = config.autoPushOrigin ? autoPushGitOrigin(dir, `verified: ${state.slug}`) : { pushed: false };
         const dur = formatDuration(m.startedAt, m.finishedAt);
         const doneMsg =
           `🎉 [เสร็จสมบูรณ์ 4/4] ${state.name}\n` +
           `PM2: ${state.pm2Name} (online)\n` +
           `🔗 URL: ${previewUrls(state.port, config)}\n` +
+          `⚡ Load: ${check.report?.load || 'OK'}\n` +
           `📊 สถิติ: ${dur} | Backend AI: ${m.aiCalls.backend} | Frontend AI: ${m.aiCalls.frontend} | Fix: ${m.totalFixLoops}\n` +
-          `📐 Docs: docs/architecture.html · api-tester.html · diagram.svg/png · FLOW_DIAGRAM.md · TECHSTACK.txt` +
+          `📐 Docs: architecture.html · api-tester.html · test-report.html · diagram.svg/png · FLOW_DIAGRAM.md · TECHSTACK.txt` +
           (pushed.pushed ? `\n🐙 Git: auto-pushed origin` : '') +
           `\n📂 Path: ${dir}` +
           (state.blockedQuestions.length
@@ -399,19 +403,13 @@ async function startDaemon() {
   const config = loadConfig();
   fs.mkdirSync(config.workspacesDir, { recursive: true });
 
-  if (!config.telegramToken) {
-    console.log('DualLoop daemon idle: set TELEGRAM_BOT_TOKEN in .env and `pm2 restart dualloop`, or run `node bin/cli.js run`.');
-    setInterval(() => {}, 60000);
-    return;
-  }
-
   let running = false;
   let cancelFlag = false;
   const jobQueue = [];
   const tunnels = new Map();
   const mutedWatchdogs = new Set();
   const alertedCrashes = new Set();
-  let bot;
+  let bot = null;
 
   const processQueue = async () => {
     if (running || !jobQueue.length) return;
@@ -430,19 +428,63 @@ async function startDaemon() {
 
   const activityFeed = [];
   const feedSubscribers = new Set();
+  const broadcast = (payload) => {
+    for (const fn of feedSubscribers) fn(payload);
+  };
   const pushFeed = (msg) => {
     const item = { ts: new Date().toISOString(), msg: String(msg) };
     activityFeed.push(item);
     if (activityFeed.length > 50) activityFeed.shift();
-    for (const fn of feedSubscribers) fn(item);
+    broadcast(item);
   };
+
+  const webQuestions = new Map();
+  let webQSeq = 0;
 
   const notify = (m) => {
     pushFeed(m);
-    return bot.send(m);
+    return bot ? bot.send(m) : Promise.resolve(null);
   };
-  const sendPhoto = (p, c) => bot.sendPhoto(p, c);
-  const askChoice = (q, opts, multi, extra) => bot.askChoice(q, opts, multi, extra);
+  const sendPhoto = (p, c) => (bot ? bot.sendPhoto(p, c) : Promise.resolve(null));
+
+  const askChoice = (question, options, allowMultiple = false, extra = {}) => {
+    const id = `w${++webQSeq}`;
+    const { allowCustom = true, allowCancel = true } = extra;
+    return new Promise((resolve, reject) => {
+      const entry = { id, question, options, allowMultiple, allowCustom, allowCancel, tgQid: null, resolve, reject };
+      webQuestions.set(id, entry);
+      broadcast({ type: 'question', id });
+
+      if (bot && config.telegramToken && config.telegramChatId) {
+        const tg = bot.askChoice(question, options, allowMultiple, extra);
+        entry.tgQid = tg.qid;
+        tg.promise
+          .then((ans) => {
+            if (!webQuestions.has(id)) return;
+            webQuestions.delete(id);
+            broadcast({ type: 'question_resolved', id });
+            resolve(ans);
+          })
+          .catch((err) => {
+            if (!webQuestions.has(id)) return;
+            webQuestions.delete(id);
+            broadcast({ type: 'question_resolved', id });
+            reject(err);
+          });
+      }
+    });
+  };
+
+  const answerWebQuestion = (id, answer, isCancel = false) => {
+    const entry = webQuestions.get(id);
+    if (!entry) return false;
+    webQuestions.delete(id);
+    broadcast({ type: 'question_resolved', id });
+    if (entry.tgQid && bot) bot.resolveExternal(entry.tgQid, answer, isCancel);
+    if (isCancel) entry.reject(new Error('Cancelled by user'));
+    else entry.resolve(answer);
+    return true;
+  };
   const loopCtx = (dir, state) => ({
     dir,
     state,
@@ -453,7 +495,8 @@ async function startDaemon() {
     shouldCancel: () => cancelFlag
   });
 
-  bot = new TelegramController(config, {
+  if (config.telegramToken) {
+    bot = new TelegramController(config, {
     onMedia: async ({ mediaPath, mimeType, caption }) => {
       try {
         await notify('👁️ กำลังวิเคราะห์รูป/เสียงของคุณ...');
@@ -816,12 +859,22 @@ async function startDaemon() {
       }
     }
   });
+  }
 
-  console.log('DualLoop Telegram Bot polling started...');
   startDashboard({
     config,
     getQueueInfo: () => ({ queueSize: jobQueue.length, running }),
     getActivityFeed: () => activityFeed,
+    getPendingQuestions: () =>
+      [...webQuestions.values()].map(({ id, question, options, allowMultiple, allowCustom, allowCancel }) => ({
+        id,
+        question,
+        options,
+        allowMultiple,
+        allowCustom,
+        allowCancel
+      })),
+    onAnswerQuestion: answerWebQuestion,
     subscribeFeed: (fn) => {
       feedSubscribers.add(fn);
       return () => feedSubscribers.delete(fn);
@@ -851,7 +904,12 @@ async function startDaemon() {
     }
   });
 
-  await bot.send(`DualLoop Bot พร้อมทำงานแล้ว (/help)\n🖥️ Dashboard: http://127.0.0.1:${config.dashboardPort}`);
+  if (bot) {
+    console.log('DualLoop Telegram Bot polling started...');
+    await bot.send(`DualLoop Bot พร้อมทำงานแล้ว (/help)\n🖥️ Dashboard: http://127.0.0.1:${config.dashboardPort}`);
+  } else {
+    console.log(`DualLoop Web-only mode running (Dashboard: http://127.0.0.1:${config.dashboardPort})`);
+  }
 
   // Auto-resume interrupted builds/verifications after PM2 restart
   const interrupted = listProjects(config.workspacesDir).filter(
@@ -913,7 +971,7 @@ async function startDaemon() {
     notify(`📆 [Daily Health Report]\nProjects: ${projects.length} (done: ${done})\nDisk: ${disk}`).catch(() => {});
   }, 24 * 60 * 60 * 1000);
 
-  await bot.startPolling();
+  if (bot) await bot.startPolling();
 }
 
 const isEntry =

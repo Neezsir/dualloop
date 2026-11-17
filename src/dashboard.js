@@ -8,8 +8,10 @@ import {
   deleteProject,
   getDiskFreeSummary,
   gitRollback,
+  readProjectEnvMasked,
   runCmd,
-  startOrReloadPm2
+  startOrReloadPm2,
+  updateProjectEnv
 } from './runner.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,6 +57,8 @@ export function startDashboard({
   config,
   getQueueInfo,
   getActivityFeed,
+  getPendingQuestions,
+  onAnswerQuestion,
   subscribeFeed,
   onNewProject,
   onContinueProject,
@@ -118,8 +122,41 @@ export function startDashboard({
         return json(res, 200, {
           ...q,
           disk: getDiskFreeSummary(config.workspacesDir),
+          pendingQuestions: getPendingQuestions(),
           projects
         });
+      }
+
+      if (req.method === 'POST' && urlPath === '/api/answer') {
+        const { id, answer, cancel } = await readBody(req);
+        const ok = onAnswerQuestion(String(id || ''), String(answer || ''), Boolean(cancel));
+        return json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'Question expired' });
+      }
+
+      if (req.method === 'POST' && urlPath === '/api/continue') {
+        const { slug, instruction } = await readBody(req);
+        if (!slug || !instruction) return json(res, 400, { error: 'slug and instruction required' });
+        const out = onContinueProject(String(slug), String(instruction));
+        return json(res, out ? 200 : 404, out ? { ok: true } : { error: 'Project not found' });
+      }
+
+      if (req.method === 'GET' && urlPath.startsWith('/api/project-meta/')) {
+        const slug = decodeURIComponent(urlPath.slice('/api/project-meta/'.length)).replace(/[^a-zA-Z0-9ก-๙_-]/g, '');
+        const dir = path.join(config.workspacesDir, slug);
+        if (!loadState(dir)) return json(res, 404, { error: 'Not found' });
+        const rulePath = path.join(dir, 'PROJECT_RULES.md');
+        const rules = fs.existsSync(rulePath) ? fs.readFileSync(rulePath, 'utf8') : '';
+        return json(res, 200, { envMasked: readProjectEnvMasked(dir), rules });
+      }
+
+      if (req.method === 'POST' && urlPath === '/api/project-meta') {
+        const { slug, envKey, envVal, rule } = await readBody(req);
+        const dir = path.join(config.workspacesDir, String(slug || ''));
+        const state = loadState(dir);
+        if (!state) return json(res, 404, { error: 'Not found' });
+        if (envKey) updateProjectEnv(dir, state, String(envKey).trim(), String(envVal || '').trim());
+        if (rule) fs.appendFileSync(path.join(dir, 'PROJECT_RULES.md'), `- ${String(rule).trim()}\n`, 'utf8');
+        return json(res, 200, { ok: true });
       }
 
       if (req.method === 'GET' && urlPath.startsWith('/api/preview/')) {
