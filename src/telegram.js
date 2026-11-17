@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * Minimal zero-dependency Telegram Bot client with inline keyboards, custom text input, cancel, and photo support.
@@ -189,6 +191,16 @@ export class TelegramController {
     }
   }
 
+  async downloadFile(fileId, ext = 'bin') {
+    const info = await this.api('getFile', { file_id: fileId });
+    const fileUrl = `https://api.telegram.org/file/bot${this.token}/${info.file_path}`;
+    const res = await fetch(fileUrl);
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+    const outPath = path.join(os.tmpdir(), `dualloop-tg-${Date.now()}.${ext}`);
+    fs.writeFileSync(outPath, Buffer.from(await res.arrayBuffer()));
+    return outPath;
+  }
+
   async handleMessage(msg) {
     const chatId = String(msg.chat?.id || '');
     if (!this.chatId || chatId !== this.chatId) {
@@ -196,6 +208,16 @@ export class TelegramController {
         chat_id: chatId,
         text: `Unauthorized. Set TELEGRAM_CHAT_ID=${chatId} in .env`
       });
+      return;
+    }
+
+    if ((msg.photo?.length || msg.voice || msg.audio) && this.handlers.onMedia) {
+      const isVoice = Boolean(msg.voice || msg.audio);
+      const fileObj = isVoice ? (msg.voice || msg.audio) : msg.photo[msg.photo.length - 1];
+      const mimeType = isVoice ? (fileObj.mime_type || 'audio/ogg') : 'image/jpeg';
+      const ext = isVoice ? 'ogg' : 'jpg';
+      const mediaPath = await this.downloadFile(fileObj.file_id, ext);
+      await this.handlers.onMedia({ mediaPath, mimeType, caption: String(msg.caption || '').trim() });
       return;
     }
 

@@ -76,6 +76,8 @@ export function loadConfig() {
     publicHost: (process.env.PUBLIC_HOST || '').replace(/\/+$/, ''),
     basePort: Number(process.env.BASE_PORT || 4100),
     maxFixLoops: Number(process.env.MAX_FIX_LOOPS || 4),
+    maxAiCalls: Number(process.env.MAX_AI_CALLS || 20),
+    enableCrossReview: process.env.ENABLE_CROSS_REVIEW !== 'false',
     cliTimeoutMs: Number(process.env.CLI_TIMEOUT_MS || 180000),
     ponytailLevel: process.env.PONYTAIL_LEVEL || 'full',
     autoFallback: process.env.AUTO_FALLBACK !== 'false'

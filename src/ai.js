@@ -213,7 +213,7 @@ export async function clarifyStep(state, config) {
   const system = `${ponytailDirective(config.ponytailLevel)}
 ${RELATIONAL_DB_RULES}
 You are the System Architect running a strict choice-only grill-me interview.
-Ask ONLY concise questions with 2-4 clickable options (in the user's language) until Tech Stack, Relational DB tables/FKs, Core Flow, and UI style are clear.
+Ask ONLY concise questions with 2-4 clickable options (in the user's language) until Tech Stack, Relational DB tables/FKs, Core Flow, and UI Theme Preset (e.g. Clean Light Dashboard, Minimal Dark, Mobile-First SaaS, Dense Admin) are clear.
 Limit to at most 4 questions total before finalizing.`;
 
   const prompt = `
@@ -266,6 +266,7 @@ export async function executeTask({ task, state, context, errorLog, config }) {
     : [
         'You are the Backend/DB/Process/Test Engineer. Build Node.js/Python backend, strict relational DB setup, process entrypoint listening on process.env.PORT, and an automated full-stack test script (test.js).',
         RELATIONAL_DB_RULES,
+        'AUTO SEED DATA: Include an idempotent seed step (or auto-seed when tables are empty) inserting realistic sample records respecting all Foreign Keys so the UI shows live data immediately.',
         'SECURITY BASELINE: Always use parameterized SQL queries (? / $1), never hardcode API keys/secrets in source code, never return password/secret fields in API JSON responses, and enforce auth guards on protected routes.',
         'Your testCommand (e.g. node test.js) MUST start cleanly against the live server or isolated test DB and verify: (1) DB schema & Foreign Key constraint rejection, (2) API CRUD round-trips matching API_CONTRACT.json, and (3) invalid-input 4xx validation.'
       ].join('\n');
@@ -299,5 +300,61 @@ Return JSON ONLY:
 }`;
 
   const raw = await callRole(isFrontend ? 'frontend' : 'backend', prompt, system, config);
+  return extractJson(raw);
+}
+
+/**
+ * Cross-AI review: opposite AI inspects project contracts & key files before verification.
+ */
+export async function crossReview({ context, config }) {
+  const system = `${ponytailDirective(config.ponytailLevel)}
+You are the Cross-AI Reviewer. Check API_CONTRACT.json vs frontend/backend integration, SQL FK integrity, security, and obvious bugs. Only suggest minimal surgical file fixes if a real bug exists.`;
+
+  const prompt = `
+Review this project snapshot:
+${context}
+
+Return JSON ONLY:
+{
+  "ok": true | false,
+  "note": "1-line finding",
+  "fixes": [{ "path": "relative/path.js", "content": "full updated file content" }]
+}`;
+
+  const raw = await callRole('frontend', prompt, system, config);
+  return extractJson(raw);
+}
+
+/**
+ * Analyze a Telegram photo (UI sketch) or voice note into an actionable app name & concept.
+ */
+export async function analyzeTelegramMedia({ mediaPath, mimeType, caption, config }) {
+  const instruction = `Extract a concise software project specification from this ${mimeType.startsWith('audio') ? 'voice request' : 'UI/diagram image'}${caption ? ` (caption: "${caption}")` : ''}.
+Return JSON ONLY: { "name": "short-slug-name", "concept": "concise Thai/English description of features & UI" }`;
+
+  if (config.geminiApiKey && (config.frontendProvider === 'gemini' || config.autoFallback)) {
+    const b64 = fs.readFileSync(mediaPath).toString('base64');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.frontendModel)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: instruction }, { inlineData: { mimeType, data: b64 } }] }],
+        generationConfig: { responseMimeType: 'application/json' }
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const txt = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
+      return extractJson(txt);
+    }
+  }
+
+  const raw = await callRole(
+    'frontend',
+    `${instruction}\nMedia file saved locally at: ${mediaPath}`,
+    ponytailDirective(config.ponytailLevel),
+    config
+  );
   return extractJson(raw);
 }

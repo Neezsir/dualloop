@@ -25,18 +25,23 @@ pm2 start ecosystem.config.cjs
 ## Telegram Commands
 
 - `/new <name> | <concept>` — Start clarify -> build -> 4-layer verify loop (queue-safe)
+- `/new --tpl <tpl> <name> | <concept>` & `/templates` — Start fast from presets
 - `/continue <slug> | <instruction>` — Add features with DB migration guard
 - `/resume <slug>` — Resume paused/interrupted project
 - `/cancel` — Cancel active task and clear queue
 - `/questions` — Answer queued blocked decisions
 - `/status` — Show project states, job queue & PM2 status
 - `/logs <slug>` — Tail PM2 logs
+- `/env <slug> [KEY=VALUE]` — Inspect or update project `.env` & restart PM2
+- `/tunnel <slug>` / `/tunnel stop <slug>` — Open/close temporary HTTPS preview URL
 - `/model <backend|frontend> [provider] <model-id>` — Switch provider/model live
 - `/export <slug>` — Export project `.zip` to chat or push to GitHub repo
 - `/stats` — View build duration, AI call counts & fix loops
 - `/update` — Self-update DualLoop via `git pull` & restart PM2
 - `/rollback <slug>` — Reset to last Git checkpoint + DB snapshot
 - `/delete <slug>` — Stop PM2 and remove project folder
+
+*(Tip: You can also send a UI sketch photo or voice note directly in Telegram to start a project!)*
 
 Run `node bin/cli.js doctor` to verify Node, PM2, Git, AI providers, Headless Browser & Telegram.
 

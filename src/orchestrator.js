@@ -11,7 +11,7 @@ import {
   loadState,
   saveState
 } from './state.js';
-import { clarifyStep, executeTask } from './ai.js';
+import { analyzeTelegramMedia, clarifyStep, crossReview, executeTask } from './ai.js';
 import {
   allocatePort,
   applyFileChanges,
@@ -19,13 +19,53 @@ import {
   exportProjectZip,
   gitCheckpoint,
   gitRollback,
+  openTunnel,
+  readProjectEnvMasked,
   runCmd,
   snapshotDbs,
+  startOrReloadPm2,
+  updateProjectEnv,
   verifyProject
 } from './runner.js';
 import { TelegramController } from './telegram.js';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const TEMPLATES = {
+  'crud-sqlite': [
+    { question: 'Tech Stack?', answer: 'Node.js + Express + SQLite (3NF + Foreign Keys) + Vanilla HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Clean Light Dashboard' }
+  ],
+  'auth-app': [
+    { question: 'Tech Stack?', answer: 'Node.js + SQLite (users + sessions/JWT + role guards) + HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Modern SaaS / Mobile-First' }
+  ],
+  dashboard: [
+    { question: 'Tech Stack?', answer: 'Node.js + SQLite + REST API + Chart/KPI Dashboard HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Minimal Dark' }
+  ],
+  landing: [
+    { question: 'Tech Stack?', answer: 'Node.js static + lead-capture SQLite API + Responsive HTML/CSS/JS' },
+    { question: 'UI Theme?', answer: 'Modern SaaS / Mobile-First' }
+  ]
+};
+
+async function checkAiBudget(dir, state, config, askChoice, notify) {
+  const m = ensureMetrics(state);
+  const limit = state.maxAiCallsOverride || config.maxAiCalls;
+  const total = m.aiCalls.backend + m.aiCalls.frontend;
+  if (total < limit) return;
+  const pick = await askChoice(
+    `💰 [Budget Guard — ${state.name}] เรียก AI ครบ ${total}/${limit} ครั้งแล้ว:`,
+    ['เพิ่มโควตา +10 ครั้ง', 'พักงานชั่วคราว (Pause)'],
+    false,
+    { allowCustom: false, allowCancel: false }
+  );
+  if (pick.includes('Pause')) throw new Error('Cancelled by user');
+  state.maxAiCallsOverride = limit + 10;
+  saveState(dir, state);
+  await notify(`🔓 เพิ่มโควตา AI เป็น ${state.maxAiCallsOverride} ครั้งแล้ว`);
+}
 
 function formatDuration(startIso, endIso) {
   const sec = Math.max(1, Math.round((new Date(endIso) - new Date(startIso)) / 1000));
@@ -62,6 +102,7 @@ export async function runProjectLoop({
     }
     while (state.phase === 'clarify') {
       checkAbort(shouldCancel);
+      await checkAiBudget(dir, state, config, askChoice, notify);
       ensureMetrics(state).aiCalls.backend += 1;
       const res = await clarifyStep(state, config);
       checkAbort(shouldCancel);
@@ -130,6 +171,7 @@ export async function runProjectLoop({
         );
 
         const context = buildCompressedContext(dir, state);
+        await checkAiBudget(dir, state, config, askChoice, notify);
         ensureMetrics(state).aiCalls[isFe ? 'frontend' : 'backend'] += 1;
         const res = await executeTask({ task, state, context, config });
         checkAbort(shouldCancel);
@@ -181,6 +223,22 @@ export async function runProjectLoop({
           `✔️ [Phase 3/4 เสร็จ (${idx + 1}/${totalTasks})] ${task.title}\n` +
             `ไฟล์: ${fileList}\nสรุป: ${res.note || 'done'}`
         );
+      }
+
+      if (config.enableCrossReview) {
+        checkAbort(shouldCancel);
+        await notify(`🔍 [Phase 3.5: Cross-AI Review] ${state.name} ตรวจสอบโค้ดข้ามค่าย...`);
+        try {
+          await checkAiBudget(dir, state, config, askChoice, notify);
+          ensureMetrics(state).aiCalls.frontend += 1;
+          const rev = await crossReview({ context: buildCompressedContext(dir, state), config });
+          if (!rev.ok && rev.fixes?.length) {
+            applyFileChanges(dir, rev.fixes);
+            await notify(`🛠️ [Cross-AI Review] แก้ ${rev.fixes.length} ไฟล์: ${rev.note || ''}`);
+          }
+        } catch (err) {
+          if (err.message === 'Cancelled by user') throw err;
+        }
       }
 
       state.phase = 'verify';
@@ -336,6 +394,9 @@ async function startDaemon() {
   let running = false;
   let cancelFlag = false;
   const jobQueue = [];
+  const tunnels = new Map();
+  const mutedWatchdogs = new Set();
+  const alertedCrashes = new Set();
   let bot;
 
   const processQueue = async () => {
@@ -367,26 +428,100 @@ async function startDaemon() {
   });
 
   bot = new TelegramController(config, {
+    onMedia: async ({ mediaPath, mimeType, caption }) => {
+      try {
+        await notify('👁️ กำลังวิเคราะห์รูป/เสียงของคุณ...');
+        const extracted = await analyzeTelegramMedia({ mediaPath, mimeType, caption, config });
+        const pick = await askChoice(
+          `📝 วิเคราะห์ได้:\nชื่อ: ${extracted.name}\nแนวคิด: ${extracted.concept}`,
+          ['🚀 สร้างโปรเจกต์ใหม่เลย', '❌ ยกเลิก'],
+          false,
+          { allowCustom: false, allowCancel: false }
+        );
+        if (!pick.includes('สร้าง')) return notify('ยกเลิกแล้วครับ');
+        const port = await allocatePort(config.workspacesDir, config.basePort);
+        const { dir, state } = createProjectState(config.workspacesDir, extracted.name, extracted.concept, port);
+        jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+        processQueue();
+      } catch (err) {
+        await notify(`❌ วิเคราะห์สื่อไม่สำเร็จ: ${err.message}`);
+      } finally {
+        try { fs.unlinkSync(mediaPath); } catch {}
+      }
+    },
     onCommand: async (text) => {
       if (text.startsWith('/start') || text.startsWith('/help')) {
         await notify(
           [
             'DualLoop Commands:',
             '/new <ชื่อ> | <คอนเซ็ปต์> — สร้างโปรแกรมใหม่ (ต่อคิวได้)',
+            '/new --tpl <tpl> <ชื่อ> | <คอนเซ็ปต์> — สร้างจาก Template',
+            '/templates — ดูรายการ Template',
             '/continue <slug> | <คำสั่งเพิ่มเติม> — ทำต่อจากโปรเจกต์เดิม',
             '/resume <slug> — ทำต่อจากงานที่ค้าง/ยกเลิกไว้',
             '/cancel — ยกเลิกงานที่กำลังทำและล้างคิว',
             '/questions — ตอบคำถามที่ข้ามไว้',
             '/status — สถานะโปรเจกต์ + คิว + PM2',
             '/logs <slug> — ดู log ล่าสุด',
+            '/env <slug> [KEY=VALUE] — ดู/แก้ .env โปรเจกต์ + รีสตาร์ต PM2',
+            '/tunnel <slug> | /tunnel stop <slug> — เปิด/ปิดลิงก์ HTTPS ชั่วคราว',
             '/model <backend|frontend> [provider] <model-id> — สลับโมเดล/ค่าย',
             '/export <slug> — ส่งออก .zip หรือขึ้น GitHub',
             '/stats — สรุปเวลาและจำนวนรอบ AI ของแต่ละโปรเจกต์',
             '/update — อัปเดต DualLoop จาก GitHub + รีสตาร์ต PM2',
             '/rollback <slug> — ย้อน Checkpoint + DB Snapshot',
-            '/delete <slug> — หยุด PM2 และลบโปรเจกต์'
+            '/delete <slug> — หยุด PM2 และลบโปรเจกต์',
+            '\n*(ส่งรูป UI หรือข้อความเสียงมาในแชทเพื่อสร้างโปรเจกต์ได้ทันที)*'
           ].join('\n')
         );
+        return;
+      }
+
+      if (text.startsWith('/templates')) {
+        await notify(`📋 Templates:\n${Object.keys(TEMPLATES).map((k) => `• ${k}`).join('\n')}\nใช้: /new --tpl <name> <app> | <concept>`);
+        return;
+      }
+
+      if (text.startsWith('/env')) {
+        const rest = text.replace('/env', '').trim();
+        const [slug, ...kvParts] = rest.split(/\s+/);
+        const dir = path.join(config.workspacesDir, slug || '');
+        const state = loadState(dir);
+        if (!state) return notify('ใช้: /env <slug> [KEY=VALUE]');
+        const kv = kvParts.join(' ');
+        if (!kv) return notify(`🔐 .env (${slug}):\n${readProjectEnvMasked(dir)}`);
+        const eq = kv.indexOf('=');
+        if (eq <= 0) return notify('รูปแบบ: /env <slug> KEY=VALUE');
+        const res = updateProjectEnv(dir, state, kv.slice(0, eq).trim(), kv.slice(eq + 1).trim());
+        await notify(res.ok ? `✅ อัปเดต .env และรีสตาร์ต ${state.pm2Name} แล้ว` : res.output);
+        return;
+      }
+
+      if (text.startsWith('/tunnel')) {
+        const arg = text.replace('/tunnel', '').trim();
+        if (arg.startsWith('stop ')) {
+          const slug = arg.slice(5).trim();
+          const proc = tunnels.get(slug);
+          if (proc) {
+            try { proc.kill(); } catch {}
+            tunnels.delete(slug);
+            return notify(`🔌 ปิด Tunnel ของ ${slug} แล้ว`);
+          }
+          return notify(`ไม่พบ Tunnel ของ ${slug}`);
+        }
+        const dir = path.join(config.workspacesDir, arg);
+        const state = loadState(dir);
+        if (!state) return notify(`Not found: ${arg}`);
+        if (tunnels.has(state.slug)) return notify(`Tunnel ของ ${state.slug} เปิดอยู่แล้ว (/tunnel stop ${state.slug})`);
+        try {
+          await notify(`🌐 กำลังเปิด Tunnel ให้ ${state.slug} (Port ${state.port})...`);
+          const { url, proc } = await openTunnel(state.port);
+          tunnels.set(state.slug, proc);
+          proc.on('exit', () => tunnels.delete(state.slug));
+          await notify(`✅ Public URL (${state.slug}):\n${url}\n(ปิดด้วย /tunnel stop ${state.slug})`);
+        } catch {
+          await notify('❌ ไม่พบ cloudflared หรือ zrok ในเครื่อง (ติดตั้ง cloudflared ก่อนใช้ /tunnel)');
+        }
         return;
       }
 
@@ -553,11 +688,22 @@ async function startDaemon() {
       }
 
       if (text.startsWith('/new ')) {
-        const raw = text.slice(5).trim();
+        let raw = text.slice(5).trim();
+        let tplAnswers = [];
+        const tplMatch = raw.match(/^--tpl\s+(\S+)\s+([\s\S]+)$/);
+        if (tplMatch) {
+          const tplName = tplMatch[1].toLowerCase();
+          raw = tplMatch[2].trim();
+          tplAnswers = TEMPLATES[tplName] || [];
+        }
         const [name, ...rest] = raw.split('|');
         const concept = rest.join('|').trim() || name.trim();
         const port = await allocatePort(config.workspacesDir, config.basePort);
         const { dir, state } = createProjectState(config.workspacesDir, name.trim(), concept, port);
+        if (tplAnswers.length) {
+          state.clarifyAnswers.push(...tplAnswers);
+          saveState(dir, state);
+        }
         jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
         if (running || jobQueue.length > 1) {
           await notify(`📥 รับงานเข้าคิว (#${jobQueue.length}): ${state.name}`);
@@ -597,6 +743,48 @@ async function startDaemon() {
     jobQueue.push(() => runProjectLoop(loopCtx(p.dir, p.state)));
   }
   if (interrupted.length) processQueue();
+
+  // PM2 Crash Watchdog (every 45s)
+  setInterval(async () => {
+    if (running) return;
+    const jlist = runCmd('pm2 jlist', process.cwd());
+    if (!jlist.ok) return;
+    let apps = [];
+    try { apps = JSON.parse(jlist.output); } catch { return; }
+
+    for (const { dir, state } of listProjects(config.workspacesDir)) {
+      if ((state.phase !== 'done' && state.phase !== 'waiting_decisions') || mutedWatchdogs.has(state.slug)) continue;
+      const app = apps.find((a) => a.name === state.pm2Name);
+      if (app && app.pm2_env?.status !== 'online') {
+        if (alertedCrashes.has(state.slug)) continue;
+        alertedCrashes.add(state.slug);
+        askChoice(
+          `🚨 [PM2 Watchdog] "${state.name}" (${state.pm2Name}) หยุดทำงาน (${app.pm2_env?.status})!`,
+          ['🔄 Restart PM2', '🔧 ให้ AI วิเคราะห์แก้', '🔇 ปิดแจ้งเตือน'],
+          false,
+          { allowCustom: false, allowCancel: false }
+        )
+          .then((pick) => {
+            alertedCrashes.delete(state.slug);
+            if (pick.includes('Restart')) {
+              startOrReloadPm2(dir, state);
+              notify(`✅ สั่ง Restart ${state.pm2Name} แล้ว`);
+            } else if (pick.includes('AI')) {
+              state.phase = 'verify';
+              state.fixLoops = 0;
+              saveState(dir, state);
+              jobQueue.push(() => runProjectLoop(loopCtx(dir, state)));
+              processQueue();
+            } else {
+              mutedWatchdogs.add(state.slug);
+            }
+          })
+          .catch(() => {});
+      } else {
+        alertedCrashes.delete(state.slug);
+      }
+    }
+  }, 45000);
 
   await bot.startPolling();
 }

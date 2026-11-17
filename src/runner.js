@@ -154,6 +154,81 @@ export function exportProjectZip(dir, slug) {
 }
 
 /**
+ * Read project .env with secret values masked for safe chat display.
+ */
+export function readProjectEnvMasked(dir) {
+  const envPath = path.join(dir, '.env');
+  if (!fs.existsSync(envPath)) return '(empty .env)';
+  return fs
+    .readFileSync(envPath, 'utf8')
+    .split(/\r?\n/)
+    .filter((l) => l.trim() && !l.trim().startsWith('#'))
+    .map((line) => {
+      const eq = line.indexOf('=');
+      if (eq <= 0) return line;
+      const k = line.slice(0, eq).trim();
+      const v = line.slice(eq + 1).trim();
+      const masked = /key|secret|token|pass/i.test(k) && v.length > 4 ? `${v.slice(0, 3)}***${v.slice(-2)}` : v;
+      return `${k}=${masked}`;
+    })
+    .join('\n');
+}
+
+/**
+ * Set or update KEY=VALUE in a project's .env and restart its PM2 app.
+ */
+export function updateProjectEnv(dir, state, key, value) {
+  const envPath = path.join(dir, '.env');
+  const lines = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8').split(/\r?\n/) : [];
+  let found = false;
+  const updated = lines.map((l) => {
+    if (l.startsWith(`${key}=`)) {
+      found = true;
+      return `${key}=${value}`;
+    }
+    return l;
+  });
+  if (!found) updated.push(`${key}=${value}`);
+  fs.writeFileSync(envPath, updated.filter((l, i, a) => l || i < a.length - 1).join('\n') + '\n', 'utf8');
+  return startOrReloadPm2(dir, state);
+}
+
+/**
+ * Open a temporary public tunnel (cloudflared or zrok) pointing at localhost:port.
+ */
+export function openTunnel(port) {
+  const trySpawn = (bin, args, urlRegex) =>
+    new Promise((resolve, reject) => {
+      const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' });
+      const timer = setTimeout(() => {
+        try { proc.kill(); } catch {}
+        reject(new Error(`${bin} timeout`));
+      }, 15000);
+      const onData = (chunk) => {
+        const m = chunk.toString().match(urlRegex);
+        if (m) {
+          clearTimeout(timer);
+          resolve({ url: m[0], proc });
+        }
+      };
+      proc.stdout.on('data', onData);
+      proc.stderr.on('data', onData);
+      proc.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      proc.on('exit', (code) => {
+        clearTimeout(timer);
+        reject(new Error(`${bin} exited (${code})`));
+      });
+    });
+
+  return trySpawn('cloudflared', ['tunnel', '--url', `http://127.0.0.1:${port}`], /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i).catch(() =>
+    trySpawn('zrok', ['share', 'public', '--headless', `http://127.0.0.1:${port}`], /https:\/\/[a-z0-9.-]+\.zrok\.io/i)
+  );
+}
+
+/**
  * Stop PM2 process and delete project directory safely.
  */
 export function deleteProject(dir, state) {
@@ -327,13 +402,22 @@ async function probeFrontendBrowser(url, screenshotPath) {
 
     const checkViewport = async (label) => {
       const r = await send('Runtime.evaluate', {
-        expression: '({ textLen: document.body ? document.body.innerText.trim().length : 0, nodes: document.querySelectorAll("*").length, sw: document.documentElement.scrollWidth, iw: window.innerWidth })',
+        expression: `({
+          textLen: document.body ? document.body.innerText.trim().length : 0,
+          nodes: document.querySelectorAll("*").length,
+          sw: document.documentElement.scrollWidth,
+          iw: window.innerWidth,
+          brokenImgs: [...document.images].filter(i => i.complete && i.naturalWidth === 0).map(i => i.getAttribute('src') || 'img').slice(0, 3)
+        })`,
         returnByValue: true
       });
-      const v = r.result?.value || { textLen: 0, nodes: 0, sw: 0, iw: 0 };
+      const v = r.result?.value || { textLen: 0, nodes: 0, sw: 0, iw: 0, brokenImgs: [] };
       if (v.textLen === 0 && v.nodes < 4) errors.push(`${label}: Blank UI rendered (empty DOM)`);
       if (v.iw > 0 && v.sw > v.iw + 4) {
         errors.push(`${label}: Horizontal layout overflow (${v.sw}px > ${v.iw}px)`);
+      }
+      if (v.brokenImgs?.length) {
+        errors.push(`${label}: Broken images (${v.brokenImgs.join(', ')})`);
       }
     };
 

@@ -18,7 +18,7 @@ Build complete software in tight, low-token loops: clarify via clickable choices
 - **Short questions, choice-first:** Ask via structured multiple-choice (`ask_question` in IDE or inline buttons in Telegram). One decision per prompt, 2–4 concise options.
 - **Minimal code:** Stdlib and native platform features first (Node.js, Python, HTML/CSS/JS). Zero unrequested abstractions or boilerplate.
 - **PM2 runtime:** Run all built services via `pm2` with isolated ports and `.env`.
-- **Relational DB integrity:** Always design 3NF relational tables with explicit `PRIMARY KEY`, `FOREIGN KEY ... REFERENCES ... ON DELETE`, `NOT NULL`/`UNIQUE`/`CHECK` constraints, indexes on FKs, and `PRAGMA foreign_keys = ON` (SQLite). On updates, use idempotent `ALTER TABLE` migrations — never drop existing data.
+- **Relational DB integrity:** Always design 3NF relational tables with explicit `PRIMARY KEY`, `FOREIGN KEY ... REFERENCES ... ON DELETE`, `NOT NULL`/`UNIQUE`/`CHECK` constraints, indexes on FKs, `PRAGMA foreign_keys = ON` (SQLite), and idempotent seed data so the UI renders live records immediately. On updates, use idempotent `ALTER TABLE` migrations — never drop existing data.
 - **Security baseline:** Always parameterize SQL queries, never hardcode secrets/keys, never expose `password`/secret fields in JSON APIs, and guard protected routes.
 - **Isolated project folder:** Create and work inside a dedicated folder named after `<project-name>` on Desktop (unless another path is specified).
 - **Single source of truth:** Keep `STATE.json` and `API_CONTRACT.json` concise; read state files instead of replaying long history.
