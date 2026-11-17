@@ -121,13 +121,14 @@
         <div class="card-title"><span id="titleNew">🚀 สร้างโปรเจกต์ใหม่</span></div>
         <div class="row">
           <input id="appName" placeholder="ชื่อโปรเจกต์ (เช่น todo-app)" />
-          <select id="tplSel" style="max-width:155px;">
+          <select id="tplSel" style="max-width:155px;" onchange="if(this.value)openTplPreview(this.value)">
             <option value="">Template: None</option>
             <option value="crud-sqlite">crud-sqlite</option>
             <option value="auth-app">auth-app</option>
             <option value="dashboard">dashboard</option>
             <option value="landing">landing</option>
           </select>
+          <button type="button" id="btnTplPrev" class="sm" onclick="openTplPreview(document.getElementById('tplSel').value || 'crud-sqlite')">👁️ ตัวอย่าง</button>
         </div>
         <textarea id="appConcept" placeholder="อธิบาย Concept, ฟีเจอร์, หรือ Tech Stack ที่ต้องการ..."></textarea>
         <div class="row" style="justify-content:flex-end;">
@@ -193,7 +194,8 @@
         qTitle: '❓ คำถามรอคำตอบ:', customBtn: '✏️ พิมพ์ตอบเอง', cancelBtn: '❌ ยกเลิก',
         contTitle: '➕ ต่อยอด / แก้ไขโปรเจกต์:', contPh: 'ระบุฟีเจอร์ที่อยากเพิ่มหรือจุดที่ต้องการแก้...',
         contSend: 'ส่งคำสั่งทำต่อ', metaTitle: '⚙️ จัดการ .env & PROJECT_RULES.md:',
-        delConfirm: 'ยืนยันลบโปรเจกต์', noDb: 'ไม่พบไฟล์ SQLite (.db)', running: 'กำลังทำงาน', idle: 'พร้อมรับงาน'
+        delConfirm: 'ยืนยันลบโปรเจกต์', noDb: 'ไม่พบไฟล์ SQLite (.db)', running: 'กำลังทำงาน', idle: 'พร้อมรับงาน',
+        tplPrevBtn: '👁️ ตัวอย่าง', tplModalTitle: '🎨 ตัวอย่าง Template', tplUseBtn: '✓ ใช้ Template นี้ (ใส่ Concept ตัวอย่าง)', tplSelected: 'เลือก Template แล้ว:'
       },
       en: {
         total: 'Total Projects', online: 'PM2 Online', queue: 'Queued Jobs', disk: 'Disk Free',
@@ -204,7 +206,62 @@
         qTitle: '❓ Pending Decision:', customBtn: '✏️ Custom Answer', cancelBtn: '❌ Cancel',
         contTitle: '➕ Continue / Update Project:', contPh: 'Describe feature to add or issue to fix...',
         contSend: 'Run Update', metaTitle: '⚙️ Manage .env & PROJECT_RULES.md:',
-        delConfirm: 'Delete project', noDb: 'No SQLite (.db) file found', running: 'RUNNING', idle: 'IDLE'
+        delConfirm: 'Delete project', noDb: 'No SQLite (.db) file found', running: 'RUNNING', idle: 'IDLE',
+        tplPrevBtn: '👁️ Preview', tplModalTitle: '🎨 Template Preview', tplUseBtn: '✓ Use This Template', tplSelected: 'Template selected:'
+      }
+    };
+
+    const TPL_EXAMPLES = {
+      'crud-sqlite': {
+        th: { title: 'CRUD + SQLite (จัดการข้อมูล)', desc: 'ระบบเพิ่ม-แก้ไข-ลบข้อมูล เชื่อม SQLite 3NF + Foreign Key พร้อมค้นหาและ Seed ข้อมูลอัตโนมัติ', sample: 'ระบบจัดการสต็อกสินค้าและหมวดหมู่ พร้อมค้นหา แจ้งเตือนของใกล้หมด และ Export CSV' },
+        en: { title: 'CRUD + SQLite Manager', desc: 'Full Create/Read/Update/Delete app backed by 3NF SQLite with FKs, search, and auto-seeded rows.', sample: 'Inventory & category manager with search, low-stock alerts, and CSV export' },
+        stack: 'Node.js · Express · SQLite (3NF + FK) · Clean Light Dashboard',
+        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#f8fafc;">
+          <rect x="12" y="12" width="396" height="28" rx="6" fill="#2563eb"/><text x="24" y="30" fill="#fff" font-size="12" font-family="sans-serif" font-weight="700">CRUD Manager · Search &amp; Filter</text>
+          <rect x="12" y="48" width="260" height="24" rx="5" fill="#fff" stroke="#cbd5e1"/><rect x="280" y="48" width="128" height="24" rx="5" fill="#16a34a"/><text x="315" y="64" fill="#fff" font-size="11" font-family="sans-serif">+ Add Item</text>
+          <rect x="12" y="82" width="396" height="86" rx="6" fill="#fff" stroke="#cbd5e1"/>
+          <line x1="12" y1="106" x2="408" y2="106" stroke="#e2e8f0"/><line x1="12" y1="134" x2="408" y2="134" stroke="#e2e8f0"/>
+          <text x="24" y="98" fill="#64748b" font-size="10" font-family="sans-serif">ID · Name · Category (FK) · Stock · Actions</text>
+          <text x="24" y="124" fill="#0f172a" font-size="11" font-family="sans-serif">#1 · Item A · Electronics · 42 · [Edit] [Del]</text>
+          <text x="24" y="152" fill="#0f172a" font-size="11" font-family="sans-serif">#2 · Item B · Office · 15 · [Edit] [Del]</text>
+        </svg>`
+      },
+      'auth-app': {
+        th: { title: 'Auth App (ระบบสมาชิก + สิทธิ์)', desc: 'ระบบสมัครสมาชิก ล็อกอิน Session/JWT แยก Role Admin/User พร้อมหน้าโปรไฟล์และ Route Guard', sample: 'ระบบจองห้องประชุมบริษัท มีล็อกอินพนักงาน แยกสิทธิ์ Admin อนุมัติการจอง' },
+        en: { title: 'Auth + Role Guard App', desc: 'Register/Login with JWT/Session, hashed passwords, Admin/User role guards, and profile panel.', sample: 'Company meeting room booking system with staff login and Admin approval' },
+        stack: 'Node.js · SQLite (users + sessions + roles) · Modern SaaS Mobile-First',
+        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#f8fafc;">
+          <rect x="120" y="16" width="180" height="148" rx="10" fill="#fff" stroke="#cbd5e1"/>
+          <text x="165" y="42" fill="#0f172a" font-size="13" font-family="sans-serif" font-weight="700">🔐 Sign In</text>
+          <rect x="136" y="54" width="148" height="24" rx="5" fill="#f1f5f9" stroke="#cbd5e1"/><text x="144" y="70" fill="#64748b" font-size="10" font-family="sans-serif">email@company.com</text>
+          <rect x="136" y="86" width="148" height="24" rx="5" fill="#f1f5f9" stroke="#cbd5e1"/><text x="144" y="102" fill="#64748b" font-size="10" font-family="sans-serif">••••••••••</text>
+          <rect x="136" y="120" width="148" height="26" rx="6" fill="#2563eb"/><text x="182" y="137" fill="#fff" font-size="11" font-family="sans-serif" font-weight="700">Login (JWT)</text>
+        </svg>`
+      },
+      dashboard: {
+        th: { title: 'KPI & Chart Dashboard', desc: 'หน้าสรุปตัวเลข KPI, กราฟรายวัน/รายเดือน และตารางรายการล่าสุด รองรับ Dark/Light ธีม', sample: 'แดชบอร์ดสรุปยอดขายรายวัน รายได้ตามหมวดสินค้า และออเดอร์ล่าสุดแบบเรียลไทม์' },
+        en: { title: 'Analytics & KPI Dashboard', desc: 'KPI cards, trend charts, and live activity table backed by relational SQLite aggregations.', sample: 'Daily sales analytics dashboard with category breakdown and recent orders' },
+        stack: 'Node.js · SQLite · REST API · Minimal Dark / Clean KPI Cards',
+        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#0f172a;">
+          <rect x="14" y="14" width="122" height="44" rx="8" fill="#1e293b"/><text x="24" y="32" fill="#94a3b8" font-size="10" font-family="sans-serif">Revenue</text><text x="24" y="50" fill="#22c55e" font-size="14" font-family="sans-serif" font-weight="700">$48,920</text>
+          <rect x="148" y="14" width="122" height="44" rx="8" fill="#1e293b"/><text x="158" y="32" fill="#94a3b8" font-size="10" font-family="sans-serif">Orders</text><text x="158" y="50" fill="#38bdf8" font-size="14" font-family="sans-serif" font-weight="700">1,284</text>
+          <rect x="282" y="14" width="124" height="44" rx="8" fill="#1e293b"/><text x="292" y="32" fill="#94a3b8" font-size="10" font-family="sans-serif">Active</text><text x="292" y="50" fill="#f59e0b" font-size="14" font-family="sans-serif" font-weight="700">98.4%</text>
+          <rect x="14" y="68" width="392" height="98" rx="8" fill="#1e293b"/>
+          <polyline points="30,146 95,120 160,132 225,95 290,108 380,82" fill="none" stroke="#38bdf8" stroke-width="3"/>
+        </svg>`
+      },
+      landing: {
+        th: { title: 'Landing Page + เก็บ Lead', desc: 'หน้าแนะนำสินค้า/บริการ Hero Section + ฟีเจอร์ + ฟอร์มลงทะเบียนติดต่อเก็บลง SQLite', sample: 'หน้า Landing Page คอร์สเรียนออนไลน์ มีตารางราคา รีวิว และฟอร์มลงทะเบียนสนใจเรียน' },
+        en: { title: 'Landing Page + Lead Capture', desc: 'Modern hero section, pricing/features cards, and lead-capture form stored in SQLite.', sample: 'SaaS product landing page with pricing tiers, FAQ, and waitlist signup form' },
+        stack: 'Node.js Static · SQLite Leads DB · Responsive Mobile-First UI',
+        svg: `<svg viewBox="0 0 420 180" style="width:100%;border-radius:10px;border:1px solid var(--line);background:#f8fafc;">
+          <rect x="14" y="12" width="392" height="72" rx="10" fill="#1d4ed8"/>
+          <text x="115" y="42" fill="#fff" font-size="14" font-family="sans-serif" font-weight="700">Your Product Hero Headline</text>
+          <rect x="155" y="52" width="110" height="22" rx="6" fill="#fff"/><text x="178" y="67" fill="#1d4ed8" font-size="10" font-family="sans-serif" font-weight="700">Get Started</text>
+          <rect x="14" y="94" width="124" height="72" rx="8" fill="#fff" stroke="#cbd5e1"/><text x="38" y="134" fill="#0f172a" font-size="11" font-family="sans-serif">Feature 1</text>
+          <rect x="148" y="94" width="124" height="72" rx="8" fill="#fff" stroke="#cbd5e1"/><text x="172" y="134" fill="#0f172a" font-size="11" font-family="sans-serif">Feature 2</text>
+          <rect x="282" y="94" width="124" height="72" rx="8" fill="#eff6ff" stroke="#3b82f6"/><text x="304" y="126" fill="#1d4ed8" font-size="10" font-family="sans-serif" font-weight="700">Lead Form</text><text x="304" y="144" fill="#64748b" font-size="9" font-family="sans-serif">Save to SQLite</text>
+        </svg>`
       }
     };
 
@@ -237,6 +294,41 @@
       document.getElementById('appConcept').placeholder = u.conceptPh;
       document.getElementById('btnCreate').textContent = u.create;
       document.getElementById('btnSaveAi').textContent = u.saveAi;
+      document.getElementById('btnTplPrev').textContent = u.tplPrevBtn;
+    }
+
+    function openTplPreview(key) {
+      const id = TPL_EXAMPLES[key] ? key : 'crud-sqlite';
+      const tpl = TPL_EXAMPLES[id];
+      const info = tpl[curLang] || tpl.th;
+      const u = UI_TXT[curLang];
+      const tabs = Object.keys(TPL_EXAMPLES).map(k =>
+        `<button class="sm ${k === id ? 'primary' : ''}" onclick="openTplPreview('${k}')">${k}</button>`
+      ).join('');
+      openModal(`${u.tplModalTitle}: ${id}`, `
+        <div class="stack">
+          <div class="row">${tabs}</div>
+          ${tpl.svg}
+          <div>
+            <strong>${esc(info.title)}</strong>
+            <div class="meta" style="margin-top:4px;">${esc(info.desc)}</div>
+            <div class="meta" style="margin-top:6px;"><strong>Tech Stack:</strong> <code>${esc(tpl.stack)}</code></div>
+            <div class="meta" style="margin-top:6px;"><strong>Sample Concept:</strong> "${esc(info.sample)}"</div>
+          </div>
+          <div class="row" style="justify-content:flex-end;">
+            <button class="sm" onclick="closeModal()">${curLang === 'en' ? 'Close' : 'ปิด'}</button>
+            <button class="primary" onclick="useTplExample('${id}')">${u.tplUseBtn}</button>
+          </div>
+        </div>`);
+    }
+
+    function useTplExample(id) {
+      const tpl = TPL_EXAMPLES[id];
+      document.getElementById('tplSel').value = id;
+      const conceptEl = document.getElementById('appConcept');
+      if (!conceptEl.value.trim()) conceptEl.value = (tpl[curLang] || tpl.th).sample;
+      closeModal();
+      toast(`${UI_TXT[curLang].tplSelected} ${id}`);
     }
 
     async function toggleLang() {
