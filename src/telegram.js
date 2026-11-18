@@ -23,7 +23,8 @@ export class TelegramController {
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(method === 'getUpdates' ? 35000 : 15000)
     });
     const data = await res.json();
     if (!data.ok) throw new Error(`Telegram ${method}: ${data.description}`);
@@ -291,20 +292,25 @@ export class TelegramController {
 
   async startPolling() {
     this.running = true;
+    let errStreak = 0;
     while (this.running) {
       try {
         const updates = await this.api('getUpdates', {
           offset: this.offset,
           timeout: 25
         });
+        errStreak = 0;
         for (const u of updates) {
           this.offset = u.update_id + 1;
           if (u.callback_query) await this.handleCallback(u.callback_query);
           else if (u.message) await this.handleMessage(u.message);
         }
       } catch (err) {
-        console.error('Telegram poll error:', err.message);
-        await new Promise((r) => setTimeout(r, 3000));
+        errStreak += 1;
+        if (errStreak === 1 || errStreak % 10 === 0) {
+          console.error('Telegram poll error:', err.cause?.code || err.message);
+        }
+        await new Promise((r) => setTimeout(r, Math.min(15000, 3000 * errStreak)));
       }
     }
   }

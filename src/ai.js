@@ -37,21 +37,46 @@ export function extractJson(text) {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
+const BIN_CACHE = new Map();
+
 function resolveBin(bin) {
-  if (bin === 'agy' && process.platform === 'win32' && process.env.LOCALAPPDATA) {
-    const localAgy = path.join(process.env.LOCALAPPDATA, 'agy', 'bin', 'agy.exe');
-    if (fs.existsSync(localAgy)) return localAgy;
+  if (BIN_CACHE.has(bin)) return BIN_CACHE.get(bin);
+  let resolved = '';
+  if (process.platform === 'win32') {
+    if (bin === 'agy' && process.env.LOCALAPPDATA) {
+      const localAgy = path.join(process.env.LOCALAPPDATA, 'agy', 'bin', 'agy.exe');
+      if (fs.existsSync(localAgy)) resolved = localAgy;
+    }
+    if (!resolved && process.env.APPDATA) {
+      const npmCmd = path.join(process.env.APPDATA, 'npm', `${bin}.cmd`);
+      if (fs.existsSync(npmCmd)) resolved = npmCmd;
+    }
+    if (!resolved) {
+      const w = spawnSync('where.exe', [bin], { encoding: 'utf8', windowsHide: true });
+      if (w.status === 0) resolved = w.stdout.split(/\r?\n/).find(Boolean)?.trim() || '';
+    }
+  } else {
+    const w = spawnSync('which', [bin], { encoding: 'utf8' });
+    if (w.status === 0) resolved = w.stdout.split(/\r?\n/).find(Boolean)?.trim() || '';
   }
-  return bin;
+  BIN_CACHE.set(bin, resolved);
+  return resolved;
 }
 
-function runCli(bin, args, promptText, timeoutMs = 180000) {
-  const res = spawnSync(resolveBin(bin), args, {
+function hasBin(bin) {
+  return Boolean(resolveBin(bin));
+}
+
+function runCli(bin, args, promptText, timeoutMs = 600000) {
+  const resolved = resolveBin(bin);
+  if (!resolved) throw new Error(`${bin} CLI is not installed on this machine`);
+  const useCmd = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved);
+  const res = spawnSync(useCmd ? 'cmd.exe' : resolved, useCmd ? ['/d', '/c', resolved, ...args] : args, {
     input: promptText,
     encoding: 'utf8',
     timeout: timeoutMs,
     windowsHide: true,
-    shell: process.platform === 'win32',
+    shell: false,
     maxBuffer: 10 * 1024 * 1024
   });
   if (res.error) {
@@ -124,7 +149,7 @@ async function callOpenAICompat({ baseUrl, apiKey, model, prompt, system }) {
 
 const PROVIDERS = {
   'claude-cli': {
-    ready: () => true,
+    ready: () => hasBin('claude'),
     run: (prompt, system, model, c) =>
       runCli('claude', model ? ['-p', '--output-format', 'text', '--model', model] : ['-p', '--output-format', 'text'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
@@ -133,12 +158,12 @@ const PROVIDERS = {
     run: callAnthropic
   },
   agy: {
-    ready: () => true,
+    ready: () => hasBin('agy'),
     run: (prompt, system, model, c) =>
       runCli('agy', model ? ['--model', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
   'gemini-cli': {
-    ready: () => true,
+    ready: () => hasBin('gemini'),
     run: (prompt, system, model, c) =>
       runCli('gemini', model ? ['-m', model, '-p', 'Follow the prompt from stdin.'] : ['-p', 'Follow the prompt from stdin.'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
@@ -147,7 +172,7 @@ const PROVIDERS = {
     run: callGeminiApi
   },
   'codex-cli': {
-    ready: () => true,
+    ready: () => hasBin('codex'),
     run: (prompt, system, model, c) =>
       runCli('codex', model ? ['exec', '-m', model, '-'] : ['exec', '-'], `${system}\n\n${prompt}`, c.cliTimeoutMs)
   },
@@ -182,29 +207,30 @@ async function callRole(role, prompt, system, config) {
   const model = isFrontend ? config.frontendModel : config.backendModel;
 
   const fallbackOrder = isFrontend
-    ? [primary, 'agy', 'gemini-cli', 'gemini', 'openrouter', 'openai', 'custom']
-    : [primary, 'claude-cli', 'anthropic', 'codex-cli', 'openrouter', 'openai', 'custom'];
+    ? [primary, 'agy', 'gemini-cli', 'gemini', 'claude-cli', 'openrouter', 'openai', 'custom']
+    : [primary, 'claude-cli', 'anthropic', 'agy', 'gemini-cli', 'codex-cli', 'openrouter', 'openai', 'custom'];
 
   const order = (config.autoFallback ? fallbackOrder : [primary]).filter(
     (v, i, a) => v && PROVIDERS[v] && a.indexOf(v) === i
   );
 
-  let lastErr;
+  const errs = [];
   for (const name of order) {
     const provider = PROVIDERS[name];
     if (!provider.ready(config)) {
       if (name === primary) {
-        lastErr = new Error(`Provider "${name}" missing required API key or URL in .env`);
+        errs.push(`${name}: not installed or missing API key/URL in .env`);
       }
       continue;
     }
     try {
-      return await provider.run(prompt, system, model, config);
+      const useModel = name === primary ? model : undefined;
+      return await provider.run(prompt, system, useModel, config);
     } catch (err) {
-      lastErr = err;
+      errs.push(`${name}: ${err.message}`);
     }
   }
-  throw lastErr || new Error(`No provider available for ${role}`);
+  throw new Error(errs.join(' | ') || `No provider available for ${role}`);
 }
 
 /**

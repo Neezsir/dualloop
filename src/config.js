@@ -83,7 +83,7 @@ export function loadConfig() {
     maxAiCalls: Number(process.env.MAX_AI_CALLS || 20),
     enableCrossReview: process.env.ENABLE_CROSS_REVIEW !== 'false',
     autoPushOrigin: process.env.AUTO_PUSH_ORIGIN !== 'false',
-    cliTimeoutMs: Number(process.env.CLI_TIMEOUT_MS || 180000),
+    cliTimeoutMs: Number(process.env.CLI_TIMEOUT_MS || 600000),
     ponytailLevel: process.env.PONYTAIL_LEVEL || 'full',
     autoFallback: process.env.AUTO_FALLBACK !== 'false',
     lang: normalizeLang(process.env.DUALLOOP_LANG || 'th')
